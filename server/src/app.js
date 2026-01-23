@@ -4,6 +4,7 @@ import cors from "cors";
 //import seedOnboardingRoutes from "./routes/seed-onboarding.routes.js";
 import errorHandler from "./middlewares/errorHandler.js";
 //import ApiError from "./utils/ApiError.js";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 
@@ -26,7 +27,7 @@ app.get("/api/health", (req, res) => {
 });
 
 // Routes kopplas in här:
-// app.use("/api/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 // app.use("/api/programs", programRoutes);
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/onboardings", onboardingRoutes);

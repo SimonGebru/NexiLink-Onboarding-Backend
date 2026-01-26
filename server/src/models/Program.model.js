@@ -23,7 +23,7 @@ const programSchema = new mongoose.Schema(
       {
         type: {
           type: String,
-          enum: ["file", link],
+          enum: ["file", "link"],
         },
         title: String,
         url: String,

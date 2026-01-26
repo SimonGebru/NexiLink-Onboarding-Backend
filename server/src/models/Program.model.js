@@ -17,7 +17,7 @@ const programSchema = new mongoose.Schema(
     },
     owner: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Employee",
+      ref: "User",
     },
     materials: [
       {

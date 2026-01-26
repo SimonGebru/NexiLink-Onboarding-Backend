@@ -20,11 +20,13 @@ export const getAllPrograms = async (req, res, next) => {
 // Hämta ett specifikt program
 export const getProgramById = async (req, res, next) => {
   try {
-    const program = await Program.findById(req.params.id).populate("owner");
+    // const program = await Program.findById(req.params.id).populate("owner");
+    const program = await Program.findById(req.params.id); // använder inte populate för tillfället, när alla filer är klara kan vi lägga till det igen
 
     if (!program) {
       throw new ApiError(404, "Program not found");
     }
+
     res.status(200).json(program);
   } catch (error) {
     next(error);
@@ -34,9 +36,14 @@ export const getProgramById = async (req, res, next) => {
 // Skapa ett program
 export const createProgram = async (req, res, next) => {
   try {
-    // Behövs en inloggad/mockad user
-    let newProgram = await Program.create({ ...req.body, owner: req.user._id });
-    newProgram = await Program.findById(newProgram._id).populate("owner");
+    let newProgram = await Program.create({
+      ...req.body,
+      owner: req.user.id,
+    });
+
+    // newProgram = await Program.findById(newProgram._id).populate("owner");
+    newProgram = await Program.findById(newProgram._id); // använder inte populate för tillfället, när alla filer är klara kan vi lägga till det igen
+
     res.status(201).json(newProgram);
   } catch (error) {
     next(error);
@@ -56,26 +63,27 @@ export const updateProgram = async (req, res, next) => {
       throw new ApiError(404, "Program not found");
     }
 
-    // Utkommenterat tills auth är implementerat
-
-    /* if (program.owner.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to update this program" });
-    } */
-
-    if (req.body.owner) {
-      delete req.body.owner;
+    if (!program.owner) {
+      throw new ApiError(
+        400,
+        "Program is missing owner (created before auth fix)"
+      );
     }
+
+    const isOwner = program.owner.toString() === req.user.id;
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      throw new ApiError(403, "You do not own this program");
+    }
+
+    if (req.body.owner) delete req.body.owner;
 
     const updatedProgram = await Program.findByIdAndUpdate(
       req.params.id,
       { $set: req.body },
-      {
-        new: true,
-        runValidators: true,
-      },
-    ).populate("owner");
+      { new: true, runValidators: true }
+    ); // använder inte populate för tillfället, när alla filer är klara kan vi lägga till det igen
 
     res.status(200).json(updatedProgram);
   } catch (error) {
@@ -96,16 +104,21 @@ export const deleteProgram = async (req, res, next) => {
       throw new ApiError(404, "Program not found");
     }
 
-    // Utkommenterat till auth är implementerat
+    if (!program.owner) {
+      throw new ApiError(
+        400,
+        "Program is missing owner (created before auth fix)"
+      );
+    }
 
-    /* if (program.owner.toString() !== req.user._id.toString()) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized to delete this program" });
-    } */
+    const isOwner = program.owner.toString() === req.user.id;
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      throw new ApiError(403, "Unauthorized to delete this program");
+    }
 
     await program.deleteOne();
-
     res.json({ message: "Program deleted successfully" });
   } catch (error) {
     next(error);

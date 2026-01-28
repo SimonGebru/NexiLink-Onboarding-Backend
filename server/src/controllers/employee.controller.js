@@ -5,6 +5,11 @@ import mongoose from "mongoose";
 export const getAllEmployees = async (req, res, next) => {
   try {
     const employees = await Employee.find();
+
+    if (!employees) {
+      throw new ApiError(404, "Hittade inga anställda");
+    }
+
     res.status(200).json(employees);
   } catch (error) {
     next(error);

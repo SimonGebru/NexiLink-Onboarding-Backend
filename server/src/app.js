@@ -7,6 +7,7 @@ import errorHandler from "./middlewares/errorHandler.js";
 //import ApiError from "./utils/ApiError.js";
 import authRoutes from "./routes/auth.routes.js";
 import onboardingRoutes from "./routes/onboarding.routes.js";
+import employeeRoutes from "./routes/employee.routes.js"
 
 const app = express();
 
@@ -34,8 +35,10 @@ app.use("/api/auth", authRoutes);
 
 
 app.use("/api/programs", programRoutes);
-// app.use("/api/employees", employeeRoutes);
+
 app.use("/api/onboardings", onboardingRoutes);
+app.use("/api/employees", employeeRoutes);
+
 
 app.use(errorHandler);
 

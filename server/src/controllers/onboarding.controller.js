@@ -38,8 +38,12 @@ export const createOnboarding = async (req, res, next) => {
       throw new ApiError(400, "Invalid programId format");
     }
 
+    // ✅ Viktigt: employee måste finnas + vara aktiv (eftersom ni soft-deletar)
     const employee = await Employee.findById(employeeId);
     if (!employee) throw new ApiError(404, "Employee not found");
+    if (employee.active === false) {
+      throw new ApiError(400, "Employee is inactive");
+    }
 
     const program = await Program.findById(programId);
     if (!program) throw new ApiError(404, "Program not found");
@@ -57,7 +61,7 @@ export const createOnboarding = async (req, res, next) => {
         status: t.defaultStatus || "Ej startad",
         comment: t.defaultComment || "",
         order: t.order ?? 0,
-        items: [], 
+        items: [],
       }));
 
     const onboarding = await EmployeeOnboarding.create({
@@ -65,13 +69,19 @@ export const createOnboarding = async (req, res, next) => {
       program: program._id,
       startDate: new Date(startDate),
       tasks,
-      createdBy: req.user?.id || null, 
+      // ✅ du standardiserade req.user = { id, role, email }
+      createdBy: req.user?.id || null,
     });
 
-    const progress = calcProgress(onboarding.tasks);
+    // ✅ Snyggare respons (valfritt): populate så frontend slipper extra calls
+    const populated = await EmployeeOnboarding.findById(onboarding._id)
+      .populate("employee")
+      .populate("program");
+
+    const progress = calcProgress(populated.tasks);
 
     res.status(201).json({
-      onboarding,
+      onboarding: populated,
       progress,
     });
   } catch (err) {
@@ -90,7 +100,11 @@ export const getOnboardingById = async (req, res, next) => {
       throw new ApiError(400, "Invalid onboarding id format");
     }
 
-    const onboarding = await EmployeeOnboarding.findById(id);
+    // ✅ populate här också (valfritt men nice)
+    const onboarding = await EmployeeOnboarding.findById(id)
+      .populate("employee")
+      .populate("program");
+
     if (!onboarding) throw new ApiError(404, "Onboarding not found");
 
     const progress = calcProgress(onboarding.tasks);
@@ -126,7 +140,6 @@ export const updateOnboardingTask = async (req, res, next) => {
     const task = onboarding.tasks.id(taskId);
     if (!task) throw new ApiError(404, "Task not found");
 
-    
     if (typeof status !== "undefined") {
       const allowed = ["Ej startad", "Pågår", "Klar"];
       if (!allowed.includes(status)) {

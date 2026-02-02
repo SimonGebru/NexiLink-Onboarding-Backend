@@ -20,6 +20,44 @@ function calcProgress(tasks = []) {
 }
 
 /**
+ * GET /onboardings
+ * query: ?status=active&limit=20
+ * Returnerar lista av onboardings (populated) + progress per onboarding.
+ */
+export const getAllOnboardings = async (req, res, next) => {
+  try {
+    const { status = "active", limit = 20 } = req.query;
+
+    const allowedStatuses = ["active", "completed", "paused", "all"];
+    if (!allowedStatuses.includes(status)) {
+      throw new ApiError(
+        400,
+        `Invalid status. Allowed: ${allowedStatuses.join(", ")}`
+      );
+    }
+
+    const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
+
+    const filter = status === "all" ? {} : { overallStatus: status };
+
+    const onboardings = await EmployeeOnboarding.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(safeLimit)
+      .populate("employee")
+      .populate("program");
+
+    const mapped = onboardings.map((o) => {
+      const progress = calcProgress(o.tasks);
+      return { onboarding: o, progress };
+    });
+
+    res.json(mapped);
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
  * POST /onboardings
  * body: { employeeId, programId, startDate }
  */
@@ -38,7 +76,7 @@ export const createOnboarding = async (req, res, next) => {
       throw new ApiError(400, "Invalid programId format");
     }
 
-    // ✅ Viktigt: employee måste finnas + vara aktiv (eftersom ni soft-deletar)
+    // Viktigt: employee måste finnas + vara aktiv 
     const employee = await Employee.findById(employeeId);
     if (!employee) throw new ApiError(404, "Employee not found");
     if (employee.active === false) {
@@ -69,11 +107,11 @@ export const createOnboarding = async (req, res, next) => {
       program: program._id,
       startDate: new Date(startDate),
       tasks,
-      // ✅ du standardiserade req.user = { id, role, email }
+      
       createdBy: req.user?.id || null,
     });
 
-    // ✅ Snyggare respons (valfritt): populate så frontend slipper extra calls
+    // populate så frontend slipper extra calls
     const populated = await EmployeeOnboarding.findById(onboarding._id)
       .populate("employee")
       .populate("program");
@@ -100,7 +138,7 @@ export const getOnboardingById = async (req, res, next) => {
       throw new ApiError(400, "Invalid onboarding id format");
     }
 
-    // ✅ populate här också (valfritt men nice)
+    // populate här också (valfritt men nice)
     const onboarding = await EmployeeOnboarding.findById(id)
       .populate("employee")
       .populate("program");
@@ -143,7 +181,10 @@ export const updateOnboardingTask = async (req, res, next) => {
     if (typeof status !== "undefined") {
       const allowed = ["Ej startad", "Pågår", "Klar"];
       if (!allowed.includes(status)) {
-        throw new ApiError(400, `Invalid status. Allowed: ${allowed.join(", ")}`);
+        throw new ApiError(
+          400,
+          `Invalid status. Allowed: ${allowed.join(", ")}`
+        );
       }
       task.status = status;
     }

@@ -1,4 +1,6 @@
 import express from "express";
+import requireAuth from "../middlewares/requireAuth.js";
+import requireRole from "../middlewares/requireRole.js";
 import {
   getAllEmployees,
   getEmployeeById,
@@ -9,10 +11,10 @@ import {
 
 const router = express.Router();
 
-router.get("/", getAllEmployees);
-router.get("/:id", getEmployeeById);
-router.post("/", createEmployee);
-router.patch("/:id", updateEmployee);
-router.delete("/:id", deleteEmployee);
+router.get("/", requireAuth, getAllEmployees);
+router.get("/:id", requireAuth, getEmployeeById);
+router.post("/", requireAuth, requireRole("admin"), createEmployee);
+router.patch("/:id", requireAuth, requireRole("admin"), updateEmployee);
+router.delete("/:id", requireAuth, requireRole("admin"), deleteEmployee);
 
 export default router;

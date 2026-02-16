@@ -1,0 +1,294 @@
+{
+  "info": {
+    "_postman_id": "file-upload-test-001",
+    "name": "NexiLink – File Upload Testing",
+    "description": "Testa uppladdning och parsning av PDF, Word och Excel-filer",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "health"]
+        },
+        "description": "Kontrollera att servern är igång"
+      },
+      "response": []
+    },
+    {
+      "name": "Upload PDF File",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/dev-upload/parse",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "dev-upload", "parse"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Välj en PDF-fil (.pdf)"
+            }
+          ]
+        },
+        "description": "Ladda upp och parsa en PDF-fil. Returnerar sidantal, extraherad text och metadata."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/dev-upload/parse"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"file\": {\n    \"name\": \"dokument.pdf\",\n    \"type\": \"application/pdf\",\n    \"size\": 45678\n  },\n  \"content\": {\n    \"pages\": 3,\n    \"text\": \"Extraherad text från PDF:en...\",\n    \"info\": {\n      \"Title\": \"Mitt Dokument\",\n      \"Author\": \"Alex\"\n    }\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Upload Word Document (DOCX)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/dev-upload/parse",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "dev-upload", "parse"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Välj en Word-fil (.docx)"
+            }
+          ]
+        },
+        "description": "Ladda upp och parsa ett Word-dokument. Returnerar extraherad text och ordräkning."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/dev-upload/parse"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"file\": {\n    \"name\": \"dokument.docx\",\n    \"type\": \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\",\n    \"size\": 23456\n  },\n  \"content\": {\n    \"text\": \"Extraherad text från Word-dokumentet...\",\n    \"wordCount\": 245\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Upload Excel Spreadsheet (XLSX)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/dev-upload/parse",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "dev-upload", "parse"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Välj en Excel-fil (.xlsx)"
+            }
+          ]
+        },
+        "description": "Ladda upp och parsa en Excel-fil. Returnerar data från alla ark i JSON-format."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/dev-upload/parse"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"file\": {\n    \"name\": \"kalkylblad.xlsx\",\n    \"type\": \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\n    \"size\": 34567\n  },\n  \"content\": {\n    \"sheetNames\": [\"Sheet1\", \"Sheet2\"],\n    \"sheets\": {\n      \"Sheet1\": [\n        {\"Name\": \"Anna\", \"Age\": 25, \"City\": \"Stockholm\"},\n        {\"Name\": \"Erik\", \"Age\": 30, \"City\": \"Göteborg\"}\n      ],\n      \"Sheet2\": []\n    },\n    \"firstSheet\": [\n      {\"Name\": \"Anna\", \"Age\": 25, \"City\": \"Stockholm\"},\n      {\"Name\": \"Erik\", \"Age\": 30, \"City\": \"Göteborg\"}\n    ],\n    \"rowCount\": 2\n  }\n}"
+        }
+      ]
+    },
+    {
+      "name": "Upload Multiple Files",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/dev-upload/multiple",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "dev-upload", "multiple"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "files",
+              "type": "file",
+              "src": [],
+              "description": "Välj flera filer att ladda upp samtidigt (max 10 filer)"
+            }
+          ]
+        },
+        "description": "Ladda upp flera filer samtidigt. Returnerar info om alla uppladdade filer."
+      },
+      "response": [
+        {
+          "name": "Success Response",
+          "originalRequest": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/dev-upload/multiple"
+            }
+          },
+          "status": "OK",
+          "code": 200,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": true,\n  \"message\": \"3 filer uppladdade\",\n  \"files\": [\n    {\n      \"name\": \"dokument1.pdf\",\n      \"type\": \"application/pdf\",\n      \"size\": 12345\n    },\n    {\n      \"name\": \"rapport.docx\",\n      \"type\": \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\",\n      \"size\": 23456\n    },\n    {\n      \"name\": \"data.xlsx\",\n      \"type\": \"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\",\n      \"size\": 34567\n    }\n  ]\n}"
+        }
+      ]
+    },
+    {
+      "name": "Upload Invalid File Type (Error Test)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/dev-upload/parse",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "dev-upload", "parse"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": [],
+              "description": "Testa med en otillåten filtyp (t.ex. .txt, .zip)"
+            }
+          ]
+        },
+        "description": "Test för att se felhantering när en otillåten filtyp laddas upp."
+      },
+      "response": [
+        {
+          "name": "Error Response",
+          "originalRequest": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/dev-upload/parse"
+            }
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": false,\n  \"message\": \"Filtypen text/plain är inte tillåten\",\n  \"statusCode\": 400\n}"
+        }
+      ]
+    },
+    {
+      "name": "Upload Without File (Error Test)",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/dev-upload/parse",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "dev-upload", "parse"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": []
+        },
+        "description": "Test för att se felhantering när ingen fil skickas med."
+      },
+      "response": [
+        {
+          "name": "Error Response",
+          "originalRequest": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/dev-upload/parse"
+            }
+          },
+          "status": "Bad Request",
+          "code": 400,
+          "_postman_previewlanguage": "json",
+          "header": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "body": "{\n  \"success\": false,\n  \"message\": \"Ingen fil uppladdad\",\n  \"statusCode\": 400\n}"
+        }
+      ]
+    }
+  ]
+}

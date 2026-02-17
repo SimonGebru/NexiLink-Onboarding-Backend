@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.post("/generate-checklist", async (req, res, next) => {
   try {
-    const { mode, text } = req.body;
+    const { mode, text, sourceType } = req.body;
 
     const modeNumber = Number(mode);
 
@@ -16,9 +16,21 @@ router.post("/generate-checklist", async (req, res, next) => {
       });
     }
 
+    
+    if (
+      typeof sourceType !== "undefined" &&
+      !["headings", "fulltext"].includes(sourceType)
+    ) {
+      return res.status(400).json({
+        ok: false,
+        message: 'sourceType must be "headings" or "fulltext"',
+      });
+    }
+
     const result = await generateChecklistFromText({
       mode: modeNumber,
       text,
+      sourceType, 
     });
 
     res.json(result);

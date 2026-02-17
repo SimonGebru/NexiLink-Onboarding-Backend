@@ -1,12 +1,16 @@
 import groq from "./groqClient.js";
 import { buildPrompt } from "./prompts.js";
 
-export const generateChecklistFromText = async ({ mode, text }) => {
+export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
   if (!mode || !text) {
     throw new Error("mode and text are required");
   }
 
-  const prompt = buildPrompt(mode, text);
+  // Default: om inget skickas så kör vi fulltext (bra fallback)
+  const safeSourceType = sourceType || "fulltext";
+
+  
+  const prompt = buildPrompt(mode, text, { sourceType: safeSourceType });
 
   let completion;
 
@@ -14,12 +18,7 @@ export const generateChecklistFromText = async ({ mode, text }) => {
     completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       temperature: 0.2,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      messages: [{ role: "user", content: prompt }],
     });
   } catch (err) {
     throw new Error(`Groq API error: ${err.message}`);
@@ -32,16 +31,16 @@ export const generateChecklistFromText = async ({ mode, text }) => {
   }
 
   // Steg 1 – trim
-  response = response.trim();
+response = response.trim();
 
-  // Steg 2 – ta bort markdown
-  response = response.replace(/```json/g, "").replace(/```/g, "");
+// Steg 2 – ta bort markdown
+response = response.replace(/```json/g, "").replace(/```/g, "");
 
-  // Steg 3 – ta bort ogiltiga kontrolltecken
-  response = response.replace(/[\u0000-\u001F\u007F]/g, "");
+// Steg 3 – normalisera line endings
+response = response.replace(/\r\n/g, "\n");
 
-  // Steg 4 – extrahera JSON-block
-  const jsonMatch = response.match(/\{[\s\S]*\}/);
+// Steg 4 – ta bort farliga kontrolltecken (men behåll \n \r \t)
+response = response.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
 
   if (!jsonMatch) {
     console.error("AI RESPONSE WAS:", response);
@@ -51,7 +50,6 @@ export const generateChecklistFromText = async ({ mode, text }) => {
   try {
     const parsed = JSON.parse(jsonMatch[0]);
 
-    // Extra säkerhet
     if (!parsed.checklistTitle || !Array.isArray(parsed.items)) {
       throw new Error("AI JSON missing required structure");
     }

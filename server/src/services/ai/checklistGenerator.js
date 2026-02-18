@@ -9,7 +9,6 @@ export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
   // Default: om inget skickas så kör vi fulltext (bra fallback)
   const safeSourceType = sourceType || "fulltext";
 
-  
   const prompt = buildPrompt(mode, text, { sourceType: safeSourceType });
 
   let completion;
@@ -31,24 +30,33 @@ export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
   }
 
   // Steg 1 – trim
-response = response.trim();
+  response = response.trim();
 
-// Steg 2 – ta bort markdown
-response = response.replace(/```json/g, "").replace(/```/g, "");
+  // Steg 2 – ta bort markdown
+  response = response.replace(/```json/g, "").replace(/```/g, "");
 
-// Steg 3 – normalisera line endings
-response = response.replace(/\r\n/g, "\n");
+  // Steg 3 – normalisera line endings
+  response = response.replace(/\r\n/g, "\n");
 
-// Steg 4 – ta bort farliga kontrolltecken (men behåll \n \r \t)
-response = response.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "");
+  // Steg 4 – ta bort farliga kontrolltecken (men behåll \n \r \t)
+  response = response.replace(
+    /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,
+    ""
+  );
 
-  if (!jsonMatch) {
+  // Steg 5 – extrahera JSON-blocket (viktigast)
+  const firstBrace = response.indexOf("{");
+  const lastBrace = response.lastIndexOf("}");
+
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
     console.error("AI RESPONSE WAS:", response);
-    throw new Error("AI did not return valid JSON block");
+    throw new Error("AI did not return valid JSON structure");
   }
 
+  const jsonString = response.slice(firstBrace, lastBrace + 1);
+
   try {
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonString);
 
     if (!parsed.checklistTitle || !Array.isArray(parsed.items)) {
       throw new Error("AI JSON missing required structure");
@@ -58,6 +66,7 @@ response = response.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "
   } catch (error) {
     console.error("JSON PARSE ERROR:", error);
     console.error("RAW AI RESPONSE:", response);
+    console.error("EXTRACTED JSON STRING:", jsonString);
     throw new Error("AI returned invalid JSON format");
   }
 };

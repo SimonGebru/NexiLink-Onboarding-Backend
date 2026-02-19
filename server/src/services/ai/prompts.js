@@ -53,7 +53,7 @@ Uppgift:
 Skapa en KORT lista med förslag på onboarding-uppgifter baserat på materialet.
 
 Regler:
-- Max 8 items
+- Max 12 items
 - phase ska alltid vara null
 - description max 1 mening
 - 1–2 kontrollfrågor per item (konkreta)

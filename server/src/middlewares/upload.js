@@ -60,9 +60,7 @@ export const uploadToMemory = multer({
   },
 });
 
-export const uploadSingleFile = uploadToMemory.single("file");
-
-export const uploadMultipleFiles = uploadToMemory.array("files", 10);
+export const uploadFiles = uploadToMemory.array("files", 10);
 
 export const uploadFields = uploadToMemory.fields([
   { name: "document", maxCount: 1 },

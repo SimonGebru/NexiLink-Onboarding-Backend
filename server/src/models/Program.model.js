@@ -28,6 +28,8 @@ const programSchema = new mongoose.Schema(
         title: String,
         url: String,
         fileName: String,
+        fileData: String,
+        mimeType: String,
         tags: [String],
         required: Boolean,
       },

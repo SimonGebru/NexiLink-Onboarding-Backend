@@ -153,7 +153,8 @@ export const uploadProgramMaterials = async (req, res, next) => {
     }
 
     const parseFile = async (file) => {
-      const { originalname, mimetype, buffer } = file;
+      const { originalname, mimetype, buffer, size } = file;
+
       let parsedContent;
       let isParsed = false;
 
@@ -169,11 +170,57 @@ export const uploadProgramMaterials = async (req, res, next) => {
         throw new ApiError(400, `Couldnt parse filetype: ${mimetype}`);
       }
 
+      // Normalisera parser-output till extractedText + headings
+      let extractedText = "";
+      let headings = [];
+
+      // 1) Om parsern returnerar en string => fulltext
+      if (typeof parsedContent === "string") {
+        extractedText = parsedContent;
+      }
+
+      // 2) Om parsern returnerar en array => anta rubriker
+      else if (Array.isArray(parsedContent)) {
+        headings = parsedContent.filter(Boolean).map(String);
+        extractedText = headings.join("\n");
+      }
+
+      // 3) Om parsern returnerar objekt => plocka ut text/headings om det finns
+      else if (parsedContent && typeof parsedContent === "object") {
+        if (typeof parsedContent.text === "string") {
+          extractedText = parsedContent.text;
+        }
+        if (Array.isArray(parsedContent.headings)) {
+          headings = parsedContent.headings.filter(Boolean).map(String);
+        }
+
+        // Fallback om text saknas men headings finns
+        if (!extractedText && headings.length > 0) {
+          extractedText = headings.join("\n");
+        }
+
+        // Sista fallback: stringify som text (så ni inte tappar allt)
+        if (!extractedText) {
+          extractedText = JSON.stringify(parsedContent);
+        }
+      }
+
+      // Bestäm default sourceType för frontend/AI
+      const sourceTypeDefault = headings.length > 0 ? "headings" : "fulltext";
+
       return {
         type: "file",
         title: originalname,
         fileName: originalname,
         mimeType: mimetype,
+        size: typeof size === "number" ? size : 0,
+
+        
+        extractedText,
+        headings,
+        sourceTypeDefault,
+
+        
         fileData:
           typeof parsedContent === "string"
             ? parsedContent
@@ -181,7 +228,6 @@ export const uploadProgramMaterials = async (req, res, next) => {
       };
     };
 
-    // Parsear alla filer parallellt
     const newMaterials = await Promise.all(files.map(parseFile));
 
     program.materials.push(...newMaterials);
@@ -192,7 +238,47 @@ export const uploadProgramMaterials = async (req, res, next) => {
       message: `${files.length} file${files.length > 1 ? "s" : ""} uploaded successfully`,
       materials: newMaterials,
     });
-  } catch (error) { 
+  } catch (error) {
+    next(error);
+  }
+};
+export const saveChecklistTemplate = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      throw new ApiError(400, "Invalid ID format");
+    }
+
+    const program = await Program.findById(req.params.id);
+
+    if (!program) {
+      throw new ApiError(404, "Program not found");
+    }
+
+    const isOwner = program.owner?.toString() === req.user.id;
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      throw new ApiError(403, "Not authorized");
+    }
+
+    const { checklistTitle, items } = req.body;
+
+    if (!checklistTitle || !Array.isArray(items)) {
+      throw new ApiError(400, "checklistTitle and items are required");
+    }
+
+    // Spara titel + items
+    program.checklistTemplateTitle = checklistTitle;
+    program.checklistTemplate = items;
+
+    await program.save();
+
+    res.status(200).json({
+      success: true,
+      checklistTemplateTitle: program.checklistTemplateTitle,
+      checklistTemplate: program.checklistTemplate,
+    });
+  } catch (error) {
     next(error);
   }
 };

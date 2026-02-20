@@ -6,6 +6,7 @@ import {
   getProgramById,
   createProgram,
   uploadProgramMaterials,
+  saveChecklistTemplate,
 } from "../controllers/program.controller.js";
 
 import { uploadFiles } from "../middlewares/upload.js";
@@ -21,6 +22,7 @@ router.get("/:id", requireAuth, getProgramById);
 router.post("/", requireAuth, requireRole("admin"), createProgram);
 
 router.post("/:id/materials", requireAuth, uploadFiles, uploadProgramMaterials);
+router.put("/:id/checklist-template", requireAuth, saveChecklistTemplate);
 
 router.patch("/:id", requireAuth, updateProgram);
 router.delete("/:id", requireAuth, deleteProgram);

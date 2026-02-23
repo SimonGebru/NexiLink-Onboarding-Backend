@@ -144,37 +144,60 @@ ${documentText}
 `;
   }
 
-  // MODE 3B – fallback när inga rubriker är markerade (full text)
-  if (mode === 3 && sourceType === "fulltext") {
-    return `
-Du är en onboarding-assistent.
+// MODE 3B – fulltext (kvalitet före kvantitet)
+if (mode === 3 && sourceType === "fulltext") {
+  return `
+Du är en senior onboarding- och compliance-specialist.
 
-Uppgift:
-Skapa en enkel punktlista (checklista) utifrån befintligt material.
+MÅL:
+Skapa en praktisk och realistisk checklista direkt baserad på materialet.
+Den ska kunna användas i ett riktigt företag.
 
-Så här ska du arbeta:
-1) Försök först hitta tydliga rubriker/sektioner i texten.
-   Exempel: rader som slutar med ":" eller tydliga avsnittsnamn.
-2) Om rubriker hittas: skapa EN uppgift per rubrik (i samma ordning).
-3) Om rubriker INTE hittas: skapa istället 6–10 tydliga ämnes-uppgifter från textens huvuddelar.
+ABSOLUT VIKTIGT:
+- Du får INTE hitta på nya policies, system eller rutiner.
+- Om något inte uttryckligen stöds i materialet → skapa inte itemet.
+- Hellre färre men korrekta items än många generiska.
 
-Regler:
-- 6–12 items (inte fler)
-- phase ska alltid vara null
-- description max 1 mening
-- questions: exakt 1 kontrollfråga per item
-- order ska vara 1..n i korrekt ordning
-- checklistTitle ska vara "Checklista från material"
-- Inga duplicerade titlar
-- Inga generiska titlar som "Övrigt"
-- Du får INTE hitta på innehåll som inte stöds av texten (håll dig nära materialet)
+ANTAL:
+- 12–18 items.
+- Om materialet bara stödjer 12 starka items → skapa 12.
+
+HÅRDA REGLER:
+- title måste börja med ett verb (Aktivera, Rapportera, Spara, Dela, Identifiera, Kontrollera, etc.)
+- Inga titlar som börjar med "Förstå" eller "Läs".
+- Inga nya policies får introduceras om de inte står i materialet exakt.
+
+FÖRBJUDNA FLUFF-FRASER:
+- "se till att"
+- "detta är viktigt"
+- "för att säkerställa"
+- "tillräcklig kunskap"
+- "följ företagets policy"
+- "enligt företagets rutin"
+
+KRAV PER ITEM:
+description ska:
+1) Beskriva exakt vad som ska göras (konkret action)
+2) Vara kopplad till en term från materialet
+3) Om risk nämns i materialet → inkludera vad man inte får göra
+
+questions:
+- 3 frågor
+- Minst 1 praktisk ("var/hur")
+- Minst 1 scenario ("vad gör du om")
+- Minst 1 detalj från texten
+
+REGLER:
+- phase alltid null
+- order 1..n utan hopp
+- checklistTitle: "Checklista från material (detaljerad)"
 
 ${jsonRules}
 
 Material:
 ${documentText}
 `;
-  }
+}
 
   throw new Error("Invalid mode selected");
 };

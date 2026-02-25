@@ -7,6 +7,7 @@ import onboardingRoutes from "./routes/onboarding.routes.js";
 import employeeRoutes from "./routes/employee.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import devAiRoutes from "./routes/devAi.routes.js";
+import notificationsRouter from "./routes/notifications.js";
 
 import errorHandler from "./middlewares/errorHandler.js";
 
@@ -25,6 +26,7 @@ app.use("/api/onboardings", onboardingRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/dev/ai", devAiRoutes);
+app.use("/api/notifications", notificationsRouter);
 
 app.use(errorHandler);
 

@@ -4,6 +4,7 @@ import ApiError from "../utils/ApiError.js";
 import EmployeeOnboarding from "../models/EmployeeOnboarding.model.js";
 import Employee from "../models/Employee.model.js";
 import Program from "../models/Program.model.js";
+import Notification from "../models/Notification.js";
 
 /**
  * Hjälpfunktion: räkna progress i %
@@ -76,7 +77,7 @@ export const createOnboarding = async (req, res, next) => {
       throw new ApiError(400, "Invalid programId format");
     }
 
-    // Viktigt: employee måste finnas + vara aktiv 
+    // Viktigt: employee måste finnas + vara aktiv
     const employee = await Employee.findById(employeeId);
     if (!employee) throw new ApiError(404, "Employee not found");
     if (employee.active === false) {
@@ -107,9 +108,23 @@ export const createOnboarding = async (req, res, next) => {
       program: program._id,
       startDate: new Date(startDate),
       tasks,
-      
       createdBy: req.user?.id || null,
     });
+
+    // NOTIS: onboarding startad (till den som är inloggad)
+    if (req.user?.id) {
+      await Notification.create({
+        userId: req.user.id,
+        type: "onboarding_started",
+        title: "Onboarding startad",
+        message: `${employee.fullName} • ${program.name}`,
+        meta: {
+          onboardingId: onboarding._id,
+          employeeId: employee._id,
+          programId: program._id,
+        },
+      });
+    }
 
     // populate så frontend slipper extra calls
     const populated = await EmployeeOnboarding.findById(onboarding._id)
@@ -178,6 +193,9 @@ export const updateOnboardingTask = async (req, res, next) => {
     const task = onboarding.tasks.id(taskId);
     if (!task) throw new ApiError(404, "Task not found");
 
+    // Spara föregående status så vi kan avgöra om den blev "Klar"
+    const prevStatus = task.status;
+
     if (typeof status !== "undefined") {
       const allowed = ["Ej startad", "Pågår", "Klar"];
       if (!allowed.includes(status)) {
@@ -194,6 +212,62 @@ export const updateOnboardingTask = async (req, res, next) => {
     }
 
     await onboarding.save();
+
+  await onboarding.save();
+
+// NOTIS: task blev Klar (till den som är inloggad)
+if (
+  req.user?.id &&
+  typeof status !== "undefined" &&
+  prevStatus !== "Klar" &&
+  status === "Klar"
+) {
+  const populated = await EmployeeOnboarding.findById(onboarding._id)
+    .populate("employee")
+    .populate("program");
+
+  await Notification.create({
+    userId: req.user.id,
+    type: "task_completed",
+    title: "Uppgift klar",
+    message: `${populated.employee?.fullName || "Nyanställd"} • ${task.title}`,
+    meta: {
+      onboardingId: onboarding._id,
+      employeeId: populated.employee?._id || null,
+      programId: populated.program?._id || null,
+      taskId,
+    },
+  });
+}
+
+// NOTIS: onboarding blev klar (alla tasks Klar) + uppdatera overallStatus
+if (req.user?.id) {
+  const progressNow = calcProgress(onboarding.tasks);
+  const wasCompleted = onboarding.overallStatus === "completed";
+
+  if (!wasCompleted && progressNow.percent === 100) {
+    onboarding.overallStatus = "completed";
+    await onboarding.save();
+
+    const populated = await EmployeeOnboarding.findById(onboarding._id)
+      .populate("employee")
+      .populate("program");
+
+    await Notification.create({
+      userId: req.user.id,
+      type: "onboarding_completed",
+      title: "Onboarding klar",
+      message: `${populated.employee?.fullName || "Nyanställd"} • ${
+        populated.program?.name || "Program"
+      }`,
+      meta: {
+        onboardingId: onboarding._id,
+        employeeId: populated.employee?._id || null,
+        programId: populated.program?._id || null,
+      },
+    });
+  }
+}
 
     const progress = calcProgress(onboarding.tasks);
 

@@ -268,14 +268,14 @@ export const saveChecklistTemplate = async (req, res, next) => {
     }
 
     // Spara titel + items
-    program.checklistTemplateTitle = checklistTitle;
+    program.checklistTitle = checklistTitle;
     program.checklistTemplate = items;
 
     await program.save();
 
     res.status(200).json({
       success: true,
-      checklistTemplateTitle: program.checklistTemplateTitle,
+      checklistTitle: program.checklistTitle,
       checklistTemplate: program.checklistTemplate,
     });
   } catch (error) {

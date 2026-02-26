@@ -282,3 +282,81 @@ export const saveChecklistTemplate = async (req, res, next) => {
     next(error);
   }
 };
+
+// PATCH /programs/:id/materials/:materialId
+// body: { required?: boolean, title?: string, tags?: [] } 
+export const updateProgramMaterial = async (req, res, next) => {
+  try {
+    const { id, materialId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError(400, "Invalid program ID format");
+    }
+    if (!mongoose.Types.ObjectId.isValid(materialId)) {
+      throw new ApiError(400, "Invalid material ID format");
+    }
+
+    const program = await Program.findById(id);
+    if (!program) throw new ApiError(404, "Program not found");
+
+    const isOwner = program.owner?.toString() === req.user.id;
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) throw new ApiError(403, "Not authorized");
+
+    const material = program.materials.id(materialId);
+    if (!material) throw new ApiError(404, "Material not found");
+
+    
+    if (typeof req.body.required !== "undefined") {
+      material.required = Boolean(req.body.required);
+    }
+
+    
+    if (typeof req.body.title !== "undefined") {
+      material.title = String(req.body.title || "");
+    }
+
+    await program.save();
+
+    res.status(200).json({
+      success: true,
+      material,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// DELETE /programs/:id/materials/:materialId
+export const deleteProgramMaterial = async (req, res, next) => {
+  try {
+    const { id, materialId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new ApiError(400, "Invalid program ID format");
+    }
+    if (!mongoose.Types.ObjectId.isValid(materialId)) {
+      throw new ApiError(400, "Invalid material ID format");
+    }
+
+    const program = await Program.findById(id);
+    if (!program) throw new ApiError(404, "Program not found");
+
+    const isOwner = program.owner?.toString() === req.user.id;
+    const isAdmin = req.user.role === "admin";
+    if (!isOwner && !isAdmin) throw new ApiError(403, "Not authorized");
+
+    const material = program.materials.id(materialId);
+    if (!material) throw new ApiError(404, "Material not found");
+
+    material.deleteOne(); // tar bort subdocumentet
+    await program.save();
+
+    res.status(200).json({
+      success: true,
+      deletedId: materialId,
+    });
+  } catch (error) {
+    next(error);
+  }
+};

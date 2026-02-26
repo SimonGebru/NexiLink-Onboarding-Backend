@@ -7,6 +7,8 @@ import {
   createProgram,
   uploadProgramMaterials,
   saveChecklistTemplate,
+  updateProgramMaterial,      
+  deleteProgramMaterial,      
 } from "../controllers/program.controller.js";
 
 import { uploadFiles } from "../middlewares/upload.js";
@@ -26,5 +28,7 @@ router.put("/:id/checklist-template", requireAuth, saveChecklistTemplate);
 
 router.patch("/:id", requireAuth, updateProgram);
 router.delete("/:id", requireAuth, deleteProgram);
+router.patch("/:id/materials/:materialId", requireAuth, updateProgramMaterial);
+router.delete("/:id/materials/:materialId", requireAuth, deleteProgramMaterial);
 
 export default router;

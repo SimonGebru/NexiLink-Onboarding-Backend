@@ -68,7 +68,7 @@ checklistTemplate: [
     questions: { type: [String], default: [] },
 
     
-    defaultStatus: { type: String, default: "not_started" },
+    defaultStatus: { type: String, default: "Ej startad" },
     defaultComment: { type: String, default: "" },
   },
 ],

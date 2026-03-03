@@ -1,7 +1,9 @@
 import groq from "./groqClient.js";
 import { buildPrompt } from "./prompts.js";
 
-
+/**
+ * Mode 3B: extra regler 
+ */
 function validateChecklistForMode3B(parsed) {
   const errors = [];
 
@@ -11,31 +13,28 @@ function validateChecklistForMode3B(parsed) {
   }
 
   const bannedSubstrings = [
-  
-  "enligt företagets rutin",
-  "se till att du förstår",
-  "detta är viktigt",
-  "på ett korrekt sätt",
-  "vad som förväntas av dig",
-
-  
-  "se till att du har",
-  "se till att du",
-  "detta är en viktig del",
-  "för att säkerställa",
-  "för att skydda",
-  "för att undvika problem",
-  "kontrollera att du har",
-  "följ företagets policy",
-  "följ alltid företagets",
-  "tillräcklig kunskap",
-  "tillräckliga behörigheter",
-  "undvik att försöka lösa problemet själv",
-  "du får inte glömma",
-  "du får inte",
-  "rapportera eventuella problem",
-  "ansvarig funktion", 
-];
+    "enligt företagets rutin",
+    "se till att du förstår",
+    "detta är viktigt",
+    "på ett korrekt sätt",
+    "vad som förväntas av dig",
+    "se till att du har",
+    "se till att du",
+    "detta är en viktig del",
+    "för att säkerställa",
+    "för att skydda",
+    "för att undvika problem",
+    "kontrollera att du har",
+    "följ företagets policy",
+    "följ alltid företagets",
+    "tillräcklig kunskap",
+    "tillräckliga behörigheter",
+    "undvik att försöka lösa problemet själv",
+    "du får inte glömma",
+    "du får inte",
+    "rapportera eventuella problem",
+    "ansvarig funktion",
+  ];
 
   parsed.items.forEach((it, idx) => {
     const title = String(it?.title || "").trim();
@@ -45,49 +44,43 @@ function validateChecklistForMode3B(parsed) {
     if (!title) errors.push(`Item ${idx + 1}: missing title`);
     if (!desc) errors.push(`Item ${idx + 1}: missing description`);
 
-    // Förbjud "Förstå" / "Läs" i title (enligt dina regler)
     if (/^(förstå|läs)\b/i.test(title)) {
-      errors.push(`Item ${idx + 1}: title starts with forbidden verb ("Förstå"/"Läs")`);
+      errors.push(
+        `Item ${idx + 1}: title starts with forbidden verb ("Förstå"/"Läs")`
+      );
     }
 
-    
     const lowerDesc = desc.toLowerCase();
     for (const banned of bannedSubstrings) {
       if (lowerDesc.includes(banned)) {
-        errors.push(`Item ${idx + 1}: description contains banned phrase: "${banned}"`);
+        errors.push(
+          `Item ${idx + 1}: description contains banned phrase: "${banned}"`
+        );
         break;
       }
     }
 
-    // Krav: 3–4 frågor i mode 3B (enligt din nya prompt)
     if (!Array.isArray(questions) || questions.length < 3 || questions.length > 4) {
       errors.push(`Item ${idx + 1}: questions must be 3–4 items`);
     }
   });
 
-  
-if (parsed.items.length < 12 || parsed.items.length > 18) {
-  errors.push(`Items count must be 12–18, got ${parsed.items.length}`);
-}
+  if (parsed.items.length < 12 || parsed.items.length > 18) {
+    errors.push(`Items count must be 12–18, got ${parsed.items.length}`);
+  }
 
   return errors;
 }
 
 /**
- * Sanitize + extrahera JSON från modellens text
+ * JSON extraction & loose parse 
  */
 function extractJsonStringFromResponse(raw) {
   if (!raw) return null;
 
   let response = String(raw).trim();
-
-  // ta bort markdown fences om de smugit sig in
-  response = response.replace(/```json/g, "").replace(/```/g, "");
-
-  // normalisera line endings
+  response = response.replace(/```json/gi, "").replace(/```/g, "");
   response = response.replace(/\r\n/g, "\n");
-
-  // ta bort farliga kontrolltecken (men behåll \n \r \t)
   response = response.replace(
     /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,
     ""
@@ -103,64 +96,310 @@ function extractJsonStringFromResponse(raw) {
   return response.slice(firstBrace, lastBrace + 1);
 }
 
+function tryParseJsonLoose(raw) {
+  if (!raw) return null;
+
+  const extracted = extractJsonStringFromResponse(raw);
+  if (!extracted) return null;
+
+  // 1) Direct
+  try {
+    return JSON.parse(extracted);
+  } catch {}
+
+  // 2) Loose fixes
+  const fixed = extracted
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1"); // trailing commas
+
+  try {
+    return JSON.parse(fixed);
+  } catch {}
+
+  return null;
+}
+
 /**
- * Gör ett Groq-call.
- * Vi försöker använda response_format om möjligt men fallbackar om det blir error.
+ * ---------------- Groq caller 
+ * Viktigt: låt oss styra modell och max_tokens per steg.
  */
-async function groqJsonCompletion(prompt) {
-  // Försök 1: med response_format (om modellen stödjer)
+const MODELS = {
+  MAP: process.env.GROQ_MODEL_MAP || "llama-3.1-8b-instant",
+  REDUCE: process.env.GROQ_MODEL_REDUCE || "llama-3.3-70b-versatile",
+  REPAIR: process.env.GROQ_MODEL_REPAIR || "llama-3.1-8b-instant",
+};
+
+const SYSTEM_JSON = {
+  role: "system",
+  content:
+    'You are a JSON-only API. Return ONLY valid JSON. No prose, no markdown, no code fences.',
+};
+
+async function groqJsonCompletion({
+  model,
+  messages,
+  max_tokens,
+  temperature = 0.2,
+}) {
+  const payload = {
+    model,
+    temperature,
+    max_tokens,
+    messages: [SYSTEM_JSON, ...messages],
+  };
+
+  // Försök response_format först
   try {
     return await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.2,
+      ...payload,
       response_format: { type: "json_object" },
-      messages: [{ role: "user", content: prompt }],
     });
   } catch (err) {
-    // Fallback: samma call utan response_format
-    console.error("Groq response_format failed, falling back without it:", err?.message);
-    return await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      temperature: 0.2,
-      messages: [{ role: "user", content: prompt }],
-    });
+    // Fallback utan response_format
+    console.error(
+      "Groq response_format failed, falling back without it:",
+      err?.message
+    );
+    return await groq.chat.completions.create(payload);
   }
 }
 
-export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
-  if (!mode || !text) {
-    throw new Error("mode and text are required");
+/**
+ * Groq JSON “städning” (billig modell)
+ * Styrs av env: AI_JSON_REPAIR=1
+ */
+async function groqRepairJsonOnly(raw) {
+  const enabled = String(process.env.AI_JSON_REPAIR || "") === "1";
+  if (!enabled) return null;
+
+  const prompt = `
+Fix the text below into VALID JSON only.
+Rules:
+- Output ONLY JSON.
+- Do NOT change meaning or content.
+- Only fix formatting issues.
+
+TEXT:
+${String(raw || "")}
+`.trim();
+
+  const completion = await groqJsonCompletion({
+    model: MODELS.REPAIR,
+    max_tokens: 900,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0,
+  });
+
+  const repairedRaw = completion?.choices?.[0]?.message?.content;
+  if (!repairedRaw) return null;
+
+  return tryParseJsonLoose(repairedRaw);
+}
+
+/**
+ * Map → Reduce helpers 
+ */
+function chunkText(text, { chunkSize = 12000, overlap = 800 } = {}) {
+  const clean = String(text || "");
+  if (clean.length <= chunkSize) return [clean];
+
+  const chunks = [];
+  let i = 0;
+
+  while (i < clean.length) {
+    const end = Math.min(i + chunkSize, clean.length);
+    chunks.push(clean.slice(i, end));
+    if (end === clean.length) break;
+    i = end - overlap;
+    if (i < 0) i = 0;
   }
 
-  const safeSourceType = sourceType || "fulltext";
-  const prompt = buildPrompt(mode, text, { sourceType: safeSourceType });
+  return chunks;
+}
 
-  let completion;
-  try {
-    completion = await groqJsonCompletion(prompt);
-  } catch (err) {
-    throw new Error(`Groq API error: ${err.message}`);
-  }
+async function mapChunkToCandidates({ chunk, chunkIndex, totalChunks }) {
+  
+  const prompt = `
+Extract onboarding task candidates from chunk ${chunkIndex + 1}/${totalChunks}.
+
+Return ONLY JSON:
+{
+  "candidates": [
+    { "title": "verb first", "description": "1-2 sentences", "hints": ["1-3 short"] }
+  ]
+}
+
+Rules:
+- Max 6 candidates.
+- title must start with a verb. Not "Förstå" or "Läs".
+- No fluff, be concrete.
+
+CHUNK:
+${chunk}
+`.trim();
+
+  const completion = await groqJsonCompletion({
+    model: MODELS.MAP,
+    max_tokens: 900,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.2,
+  });
 
   const raw = completion?.choices?.[0]?.message?.content;
-  if (!raw) {
-    throw new Error("AI returned empty response");
+
+  let parsed = tryParseJsonLoose(raw);
+  if (!parsed) parsed = await groqRepairJsonOnly(raw);
+
+  if (!parsed) {
+    console.error("RAW MAP RESPONSE:", raw);
+    throw new Error("AI returned invalid JSON format (map)");
   }
 
-  const jsonString = extractJsonStringFromResponse(raw);
-  if (!jsonString) {
-    console.error("RAW AI RESPONSE:", raw);
-    throw new Error("AI did not return valid JSON structure");
+  const candidates = Array.isArray(parsed?.candidates) ? parsed.candidates : [];
+  return candidates.slice(0, 6);
+}
+
+async function reduceCandidatesToChecklist({ mode, candidates, sourceType }) {
+  // Kompakt input till din befintliga buildPrompt (minskar tokens drastiskt)
+  const compactText = candidates
+    .map((c, i) => {
+      const t = String(c?.title || "").trim();
+      const d = String(c?.description || "").trim();
+      const hints = Array.isArray(c?.hints) ? c.hints.join(", ") : "";
+      return `${i + 1}. ${t}\n- ${d}\n- hints: ${hints}`.trim();
+    })
+    .join("\n\n");
+
+  const prompt = buildPrompt(mode, compactText, {
+    sourceType: sourceType || "fulltext",
+  });
+
+  const completion = await groqJsonCompletion({
+    model: MODELS.REDUCE,
+    max_tokens: 2200,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.2,
+  });
+
+  const raw = completion?.choices?.[0]?.message?.content;
+
+  let parsed = tryParseJsonLoose(raw);
+  if (!parsed) parsed = await groqRepairJsonOnly(raw);
+
+  if (!parsed) {
+    console.error("RAW REDUCE RESPONSE:", raw);
+    throw new Error("AI returned invalid JSON format (reduce)");
   }
 
-  // 1) Första parse-försöket
-  let parsed;
-  try {
-    parsed = JSON.parse(jsonString);
-  } catch (error) {
-    console.error("JSON PARSE ERROR:", error);
+  return parsed;
+}
+
+async function repairMode3BIfNeeded(parsed) {
+  const errors = validateChecklistForMode3B(parsed);
+  if (errors.length === 0) return parsed;
+
+  // 1 reparationsrunda max (70B, men kontrollerad output)
+  const repairPrompt = `
+You must return ONLY valid JSON (same schema).
+Fix these errors:
+${errors.map((e) => `- ${e}`).join("\n")}
+
+Return fixed JSON:
+${JSON.stringify(parsed)}
+`.trim();
+
+  const completion = await groqJsonCompletion({
+    model: MODELS.REDUCE,
+    max_tokens: 2400,
+    messages: [{ role: "user", content: repairPrompt }],
+    temperature: 0.2,
+  });
+
+  const raw = completion?.choices?.[0]?.message?.content;
+
+  let repaired = tryParseJsonLoose(raw);
+  if (!repaired) repaired = await groqRepairJsonOnly(raw);
+
+  if (!repaired) {
+    console.error("RAW REPAIR RESPONSE:", raw);
+    throw new Error("AI returned invalid JSON format (repair)");
+  }
+
+  const errors2 = validateChecklistForMode3B(repaired);
+  if (errors2.length > 0) {
+    console.error("REPAIR STILL INVALID:", errors2);
+    throw new Error("AI returned invalid JSON format (repair still invalid)");
+  }
+
+  return repaired;
+}
+
+
+export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
+  if (!mode || !text) throw new Error("mode and text are required");
+
+  const safeSourceType = sourceType || "fulltext";
+  const isMode3B = Number(mode) === 3 && safeSourceType === "fulltext";
+
+  const LONG_TEXT_THRESHOLD = 18000;
+
+  // Long text -> Map/Reduce
+  if (String(text).length > LONG_TEXT_THRESHOLD) {
+    const chunks = chunkText(text, { chunkSize: 12000, overlap: 800 });
+
+    // hårt max (tokenkontroll)
+    const maxChunks = 10;
+    const safeChunks = chunks.slice(0, maxChunks);
+
+    const allCandidates = [];
+    for (let i = 0; i < safeChunks.length; i++) {
+      const candidates = await mapChunkToCandidates({
+        chunk: safeChunks[i],
+        chunkIndex: i,
+        totalChunks: safeChunks.length,
+      });
+      allCandidates.push(...candidates);
+    }
+
+    // cap (tokenkontroll)
+    const candidatesCapped = allCandidates.slice(0, 50);
+
+    let reduced = await reduceCandidatesToChecklist({
+      mode,
+      candidates: candidatesCapped,
+      sourceType: safeSourceType,
+    });
+
+    if (!reduced?.checklistTitle || !Array.isArray(reduced?.items)) {
+      console.error("REDUCED PARSED JSON:", reduced);
+      throw new Error("AI JSON missing required structure");
+    }
+
+    if (isMode3B) {
+      reduced = await repairMode3BIfNeeded(reduced);
+    }
+
+    return reduced;
+  }
+
+  
+  const prompt = buildPrompt(mode, text, { sourceType: safeSourceType });
+
+  const completion = await groqJsonCompletion({
+    model: MODELS.REDUCE,
+    max_tokens: 2200,
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.2,
+  });
+
+  const raw = completion?.choices?.[0]?.message?.content;
+
+  let parsed = tryParseJsonLoose(raw);
+  if (!parsed) parsed = await groqRepairJsonOnly(raw);
+
+  if (!parsed) {
     console.error("RAW AI RESPONSE:", raw);
-    console.error("EXTRACTED JSON STRING:", jsonString);
     throw new Error("AI returned invalid JSON format");
   }
 
@@ -169,76 +408,8 @@ export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
     throw new Error("AI JSON missing required structure");
   }
 
-  // 2) Extra validering + repair (bara för Mode 3B fulltext)
-  const isMode3B = Number(mode) === 3 && safeSourceType === "fulltext";
-
   if (isMode3B) {
-    const errors = validateChecklistForMode3B(parsed);
-
-    if (errors.length > 0) {
-      console.error("MODE 3B VALIDATION FAILED:", errors);
-
-      // En reparationsrunda max (så vi inte loopar)
-      const repairPrompt = `
-Du returnerade giltig JSON men den bryter mot hårda regler.
-
-FEL SOM MÅSTE FIXAS:
-${errors.map((e) => `- ${e}`).join("\n")}
-
-KRAV:
-- Returnera ENDAST giltig JSON (ingen text före/efter).
-- Behåll samma schema.
-- Skriv om titles/descriptions/questions så att ALLA fel försvinner.
-- Ta bort förbjudna fluff-fraser helt.
-- Se till att antalet items blir 12–18.
-- title får inte börja med "Förstå" eller "Läs".
-- questions måste vara 3–4 per item.
-
-Här är din senaste JSON (fixa den):
-${JSON.stringify(parsed)}
-`;
-
-      let repairCompletion;
-      try {
-        repairCompletion = await groqJsonCompletion(repairPrompt);
-      } catch (err) {
-        throw new Error(`Groq API error (repair): ${err.message}`);
-      }
-
-      const repairRaw = repairCompletion?.choices?.[0]?.message?.content;
-      if (!repairRaw) {
-        throw new Error("AI returned empty response (repair)");
-      }
-
-      const repairedJsonString = extractJsonStringFromResponse(repairRaw);
-      if (!repairedJsonString) {
-        console.error("RAW AI REPAIR RESPONSE:", repairRaw);
-        throw new Error("AI did not return valid JSON structure (repair)");
-      }
-
-      let repairedParsed;
-      try {
-        repairedParsed = JSON.parse(repairedJsonString);
-      } catch (error) {
-        console.error("JSON PARSE ERROR (repair):", error);
-        console.error("RAW AI REPAIR RESPONSE:", repairRaw);
-        console.error("EXTRACTED JSON STRING (repair):", repairedJsonString);
-        throw new Error("AI returned invalid JSON format");
-      }
-
-      if (!repairedParsed.checklistTitle || !Array.isArray(repairedParsed.items)) {
-        console.error("REPAIRED PARSED JSON:", repairedParsed);
-        throw new Error("AI JSON missing required structure (repair)");
-      }
-
-      const errors2 = validateChecklistForMode3B(repairedParsed);
-      if (errors2.length > 0) {
-        console.error("REPAIR STILL INVALID:", errors2);
-        throw new Error("AI returned invalid JSON format");
-      }
-
-      return repairedParsed;
-    }
+    parsed = await repairMode3BIfNeeded(parsed);
   }
 
   return parsed;

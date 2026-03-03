@@ -50,6 +50,11 @@ const taskSchema = new mongoose.Schema(
       type: [taskItemSchema],
       default: [],
     },
+
+    questions: {
+      type: [String],
+      default: [],
+    },
   },
   { timestamps: true }
 );

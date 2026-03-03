@@ -101,6 +101,7 @@ export const createOnboarding = async (req, res, next) => {
         comment: t.defaultComment || "",
         order: t.order ?? 0,
         items: [],
+        questions: t.questions || []
       }));
 
     const onboarding = await EmployeeOnboarding.create({

@@ -13,3 +13,31 @@ export const parsers = [
     action: parseXlsx,
   },
 ];
+
+function safeJsonParse(str) {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return null;
+  }
+}
+
+export async function extractTextFromFile(material) {
+  if (!material) return "";
+
+  if (typeof material.extractedText === "string" && material.extractedText.trim()) {
+    return material.extractedText;
+  }
+
+  if (typeof material.fileData === "string" && material.fileData.trim()) {
+    const maybeJson = safeJsonParse(material.fileData);
+
+    if (maybeJson && typeof maybeJson.text === "string") {
+      return maybeJson.text;
+    }
+
+    return material.fileData;
+  }
+
+  return "";
+}

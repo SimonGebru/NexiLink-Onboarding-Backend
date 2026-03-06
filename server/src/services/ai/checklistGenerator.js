@@ -111,7 +111,7 @@ function tryParseJsonLoose(raw) {
   const fixed = extracted
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
-    .replace(/,\s*([}\]])/g, "$1"); // trailing commas
+    .replace(/,\s*([}\]])/g, "$1"); 
 
   try {
     return JSON.parse(fixed);
@@ -260,7 +260,7 @@ ${chunk}
   return candidates.slice(0, 6);
 }
 
-async function reduceCandidatesToChecklist({ mode, candidates, sourceType }) {
+async function reduceCandidatesToChecklist({ mode, candidates, sourceType, context }) {
   // Kompakt input till din befintliga buildPrompt (minskar tokens drastiskt)
   const compactText = candidates
     .map((c, i) => {
@@ -272,8 +272,9 @@ async function reduceCandidatesToChecklist({ mode, candidates, sourceType }) {
     .join("\n\n");
 
   const prompt = buildPrompt(mode, compactText, {
-    sourceType: sourceType || "fulltext",
-  });
+  sourceType: sourceType || "fulltext",
+  context,
+});
 
   const completion = await groqJsonCompletion({
     model: MODELS.REDUCE,
@@ -336,7 +337,7 @@ ${JSON.stringify(parsed)}
 }
 
 
-export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
+export const generateChecklistFromText = async ({ mode, text, sourceType, context = {} }) => {
   if (!mode || !text) throw new Error("mode and text are required");
 
   const safeSourceType = sourceType || "fulltext";
@@ -369,6 +370,7 @@ export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
       mode,
       candidates: candidatesCapped,
       sourceType: safeSourceType,
+      context,
     });
 
     if (!reduced?.checklistTitle || !Array.isArray(reduced?.items)) {
@@ -384,7 +386,7 @@ export const generateChecklistFromText = async ({ mode, text, sourceType }) => {
   }
 
   
-  const prompt = buildPrompt(mode, text, { sourceType: safeSourceType });
+  const prompt = buildPrompt(mode, text, { sourceType: safeSourceType, context });
 
   const completion = await groqJsonCompletion({
     model: MODELS.REDUCE,

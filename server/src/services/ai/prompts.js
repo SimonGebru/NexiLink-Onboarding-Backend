@@ -28,20 +28,58 @@ Format:
 }
 `;
 
+function buildContextBlock(context = {}) {
+  const unit = context?.program?.unit ? String(context.program.unit) : "";
+
+  // Stöd för både targetRole (gamla) och role (nya)
+  const role =
+    context?.program?.targetRole
+      ? String(context.program.targetRole)
+      : context?.program?.role
+      ? String(context.program.role)
+      : "";
+
+  
+  const analysis =
+    context?.analysis
+      ? String(context.analysis)
+      : context?.analysisText
+      ? String(context.analysisText)
+      : "";
+
+  const lines = [];
+
+  if (unit || role) {
+    lines.push("Programkontext:");
+    if (unit) lines.push(`- Enhet: ${unit}`);
+    if (role) lines.push(`- Roll: ${role}`);
+  }
+
+  if (analysis) {
+    lines.push("");
+    lines.push("Analys av material (sammanfattning):");
+    lines.push(analysis);
+  }
+
+  const block = lines.join("\n").trim();
+  if (!block) return "";
+
+  return `\nKONTEXT (använd för prioritering och formulering):\n${block}\n`;
+}
+
 /**
  * buildPrompt
  * @param {number} mode 1 | 2 | 3
- * @param {string} documentText - text eller rubriker beroende på mode/sourceType
+ * @param {string} documentText
  * @param {object} options
- * @param {"headings"|"fulltext"} options.sourceType - används främst för mode 3
+ * @param {"headings"|"fulltext"} options.sourceType
+ * @param {object} options.context - { program: {unit,targetRole}, analysis: string }
  */
 export const buildPrompt = (mode, documentText, options = {}) => {
   const sourceType = options.sourceType || "fulltext";
+  const contextBlock = buildContextBlock(options.context);
 
-  
-  // MODE 1 – MANUELL CHECKLISTBYGGARE
-  // "AI gav mig en bra startlista – resten gör jag."
-  
+  // MODE 1
   if (mode === 1) {
     return `
 Du är en onboarding-assistent.
@@ -63,16 +101,14 @@ Regler:
 - Prioritera det viktigaste (inte smådetaljer)
 
 ${jsonRules}
+${contextBlock}
 
 Material:
 ${documentText}
 `;
   }
 
-  
-  // MODE 2 – MALLBASERAD (90 dagar)
-  // (Senare kan vi lägga till 30/60/90 som val)
-  
+  // MODE 2
   if (mode === 2) {
     return `
 Du är en HR-expert som bygger en strukturerad onboarding-mall.
@@ -93,22 +129,17 @@ Regler:
   - 2–3 kontrollfrågor (konkreta, relevanta, inte upprepningar)
 - checklistTitle ska vara "Onboarding-checklista 90 dagar"
 - Undvik fluff. Utgå från materialet men fyll ut saknade “standarddelar” om det behövs.
+- Om analysen nämner risker/ansvar/lagrum: spegla det i relevanta uppgifter och frågor.
 
 ${jsonRules}
+${contextBlock}
 
 Material:
 ${documentText}
 `;
   }
 
-  
-  // MODE 3 – AUTOGENERERA ENKEL PUNKTLISTA
-  // Två lägen:
-  // 3A = headings (markerade rubriker) -> superstrikt
-  // 3B = fulltext fallback -> försök hitta rubriker/ämnen
-  
-
-  // MODE 3A – rubriker markerade (en rubrik per rad)
+  // MODE 3A – headings
   if (mode === 3 && sourceType === "headings") {
     return `
 Du är en onboarding-assistent.
@@ -138,15 +169,16 @@ Regler:
 - Inga generiska titlar som "Övrigt".
 
 ${jsonRules}
+${contextBlock}
 
 Rubriker (en per rad):
 ${documentText}
 `;
   }
 
-// MODE 3B – fulltext (kvalitet före kvantitet)
-if (mode === 3 && sourceType === "fulltext") {
-  return `
+  // MODE 3B – fulltext
+  if (mode === 3 && sourceType === "fulltext") {
+    return `
 Du är en senior onboarding- och compliance-specialist.
 
 MÅL:
@@ -186,6 +218,7 @@ questions:
 - Minst 1 praktisk ("var/hur")
 - Minst 1 scenario ("vad gör du om")
 - Minst 1 detalj från texten
+- Om analysen pekar ut risk/ansvar/lagrum: gör minst en fråga som testar det.
 
 REGLER:
 - phase alltid null
@@ -193,11 +226,12 @@ REGLER:
 - checklistTitle: "Checklista från material (detaljerad)"
 
 ${jsonRules}
+${contextBlock}
 
 Material:
 ${documentText}
 `;
-}
+  }
 
   throw new Error("Invalid mode selected");
 };

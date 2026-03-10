@@ -2,7 +2,7 @@ import groq from "./groqClient.js";
 import { buildPrompt } from "./prompts.js";
 
 /**
- * Mode 3B: extra regler 
+ * Mode 3B: extra regler
  */
 function validateChecklistForMode3B(parsed) {
   const errors = [];
@@ -60,7 +60,11 @@ function validateChecklistForMode3B(parsed) {
       }
     }
 
-    if (!Array.isArray(questions) || questions.length < 3 || questions.length > 4) {
+    if (
+      !Array.isArray(questions) ||
+      questions.length < 3 ||
+      questions.length > 4
+    ) {
       errors.push(`Item ${idx + 1}: questions must be 3–4 items`);
     }
   });
@@ -73,7 +77,7 @@ function validateChecklistForMode3B(parsed) {
 }
 
 /**
- * JSON extraction & loose parse 
+ * JSON extraction & loose parse
  */
 function extractJsonStringFromResponse(raw) {
   if (!raw) return null;
@@ -102,16 +106,14 @@ function tryParseJsonLoose(raw) {
   const extracted = extractJsonStringFromResponse(raw);
   if (!extracted) return null;
 
-  // 1) Direct
   try {
     return JSON.parse(extracted);
   } catch {}
 
-  // 2) Loose fixes
   const fixed = extracted
     .replace(/[“”]/g, '"')
     .replace(/[‘’]/g, "'")
-    .replace(/,\s*([}\]])/g, "$1"); 
+    .replace(/,\s*([}\]])/g, "$1");
 
   try {
     return JSON.parse(fixed);
@@ -121,7 +123,35 @@ function tryParseJsonLoose(raw) {
 }
 
 /**
- * ---------------- Groq caller 
+ * Normaliserar resultatet beroende på mode.
+ * Bara mode 2 får ha phase.
+ */
+function normalizeChecklistByMode(parsed, mode) {
+  if (!parsed || !Array.isArray(parsed.items)) return parsed;
+
+  const normalizedItems = parsed.items.map((item, index) => {
+    const validPhase =
+      item?.phase === "0-30" ||
+      item?.phase === "31-60" ||
+      item?.phase === "61-90"
+        ? item.phase
+        : null;
+
+    return {
+      ...item,
+      order: index + 1,
+      phase: Number(mode) === 2 ? validPhase : null,
+    };
+  });
+
+  return {
+    ...parsed,
+    items: normalizedItems,
+  };
+}
+
+/**
+ * ---------------- Groq caller
  * Viktigt: låt oss styra modell och max_tokens per steg.
  */
 const MODELS = {
@@ -149,14 +179,12 @@ async function groqJsonCompletion({
     messages: [SYSTEM_JSON, ...messages],
   };
 
-  // Försök response_format först
   try {
     return await groq.chat.completions.create({
       ...payload,
       response_format: { type: "json_object" },
     });
   } catch (err) {
-    // Fallback utan response_format
     console.error(
       "Groq response_format failed, falling back without it:",
       err?.message
@@ -166,7 +194,7 @@ async function groqJsonCompletion({
 }
 
 /**
- * Groq JSON “städning” (billig modell)
+ * Groq JSON-städning
  * Styrs av env: AI_JSON_REPAIR=1
  */
 async function groqRepairJsonOnly(raw) {
@@ -198,7 +226,7 @@ ${String(raw || "")}
 }
 
 /**
- * Map → Reduce helpers 
+ * Map → Reduce helpers
  */
 function chunkText(text, { chunkSize = 12000, overlap = 800 } = {}) {
   const clean = String(text || "");
@@ -219,7 +247,6 @@ function chunkText(text, { chunkSize = 12000, overlap = 800 } = {}) {
 }
 
 async function mapChunkToCandidates({ chunk, chunkIndex, totalChunks }) {
-  
   const prompt = `
 Extract onboarding task candidates from chunk ${chunkIndex + 1}/${totalChunks}.
 
@@ -260,8 +287,12 @@ ${chunk}
   return candidates.slice(0, 6);
 }
 
-async function reduceCandidatesToChecklist({ mode, candidates, sourceType, context }) {
-  // Kompakt input till din befintliga buildPrompt (minskar tokens drastiskt)
+async function reduceCandidatesToChecklist({
+  mode,
+  candidates,
+  sourceType,
+  context,
+}) {
   const compactText = candidates
     .map((c, i) => {
       const t = String(c?.title || "").trim();
@@ -272,9 +303,9 @@ async function reduceCandidatesToChecklist({ mode, candidates, sourceType, conte
     .join("\n\n");
 
   const prompt = buildPrompt(mode, compactText, {
-  sourceType: sourceType || "fulltext",
-  context,
-});
+    sourceType: sourceType || "fulltext",
+    context,
+  });
 
   const completion = await groqJsonCompletion({
     model: MODELS.REDUCE,
@@ -300,7 +331,6 @@ async function repairMode3BIfNeeded(parsed) {
   const errors = validateChecklistForMode3B(parsed);
   if (errors.length === 0) return parsed;
 
-  // 1 reparationsrunda max (70B, men kontrollerad output)
   const repairPrompt = `
 You must return ONLY valid JSON (same schema).
 Fix these errors:
@@ -336,8 +366,12 @@ ${JSON.stringify(parsed)}
   return repaired;
 }
 
-
-export const generateChecklistFromText = async ({ mode, text, sourceType, context = {} }) => {
+export const generateChecklistFromText = async ({
+  mode,
+  text,
+  sourceType,
+  context = {},
+}) => {
   if (!mode || !text) throw new Error("mode and text are required");
 
   const safeSourceType = sourceType || "fulltext";
@@ -345,11 +379,9 @@ export const generateChecklistFromText = async ({ mode, text, sourceType, contex
 
   const LONG_TEXT_THRESHOLD = 18000;
 
-  // Long text -> Map/Reduce
   if (String(text).length > LONG_TEXT_THRESHOLD) {
     const chunks = chunkText(text, { chunkSize: 12000, overlap: 800 });
 
-    // hårt max (tokenkontroll)
     const maxChunks = 10;
     const safeChunks = chunks.slice(0, maxChunks);
 
@@ -363,7 +395,6 @@ export const generateChecklistFromText = async ({ mode, text, sourceType, contex
       allCandidates.push(...candidates);
     }
 
-    // cap (tokenkontroll)
     const candidatesCapped = allCandidates.slice(0, 50);
 
     let reduced = await reduceCandidatesToChecklist({
@@ -382,11 +413,15 @@ export const generateChecklistFromText = async ({ mode, text, sourceType, contex
       reduced = await repairMode3BIfNeeded(reduced);
     }
 
+    reduced = normalizeChecklistByMode(reduced, mode);
+
     return reduced;
   }
 
-  
-  const prompt = buildPrompt(mode, text, { sourceType: safeSourceType, context });
+  const prompt = buildPrompt(mode, text, {
+    sourceType: safeSourceType,
+    context,
+  });
 
   const completion = await groqJsonCompletion({
     model: MODELS.REDUCE,
@@ -413,6 +448,8 @@ export const generateChecklistFromText = async ({ mode, text, sourceType, contex
   if (isMode3B) {
     parsed = await repairMode3BIfNeeded(parsed);
   }
+
+  parsed = normalizeChecklistByMode(parsed, mode);
 
   return parsed;
 };

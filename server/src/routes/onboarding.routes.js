@@ -4,6 +4,7 @@ import requireRole from "../middlewares/requireRole.js";
 
 import {
   createOnboarding,
+  getMyOnboardings,
   getOnboardingById,
   updateOnboardingTask,
   getAllOnboardings,
@@ -12,8 +13,11 @@ import {
 const router = express.Router();
 
 router.post("/", requireAuth, requireRole("admin"), createOnboarding);
+
+router.get("/me", requireAuth, getMyOnboardings);
 router.get("/", requireAuth, getAllOnboardings);
 router.get("/:id", requireAuth, getOnboardingById);
+
 router.patch("/:id/tasks/:taskId", requireAuth, updateOnboardingTask);
 
 export default router;

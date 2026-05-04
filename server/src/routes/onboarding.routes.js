@@ -14,6 +14,11 @@ const router = express.Router();
 router.post("/", requireAuth, requireRole("admin", "hr"), createOnboarding);
 router.get("/", requireAuth, requireRole("admin", "hr"), getAllOnboardings);
 router.get("/:id", requireAuth, requireRole("admin", "hr"), getOnboardingById);
-router.patch("/:id/tasks/:taskId", requireAuth, requireRole("admin", "hr"), updateOnboardingTask);
+router.patch(
+  "/:id/tasks/:taskId",
+  requireAuth,
+  requireRole("admin", "hr"),
+  updateOnboardingTask,
+);
 
 export default router;

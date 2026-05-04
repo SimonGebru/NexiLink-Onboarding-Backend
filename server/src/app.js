@@ -9,6 +9,8 @@ import dashboardRoutes from "./routes/dashboard.routes.js";
 import devAiRoutes from "./routes/devAi.routes.js";
 import notificationsRouter from "./routes/notifications.js";
 import programAnalysisRoutes from "./routes/programAnalysis.routes.js";
+import meRoutes from "./routes/me.routes.js"
+import inviteRoutes from "./routes/invite.routes.js"
 
 import errorHandler from "./middlewares/errorHandler.js";
 
@@ -29,6 +31,8 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/dev/ai", devAiRoutes);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/programs", programAnalysisRoutes); 
+app.use("/api/me", meRoutes)
+app.use("/api/invites/employee", inviteRoutes)
 
 app.use(errorHandler);
 

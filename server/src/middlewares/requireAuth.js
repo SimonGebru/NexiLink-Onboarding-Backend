@@ -4,7 +4,8 @@ import { verifyToken } from "../utils/jwt.js";
 export default function requireAuth(req, _res, next) {
   const authHeader = req.headers.authorization;
 
-  if (!authHeader) return next(new ApiError(401, "Missing Authorization header"));
+  if (!authHeader)
+    return next(new ApiError(401, "Missing Authorization header"));
 
   const [type, token] = authHeader.split(" ");
 
@@ -19,6 +20,7 @@ export default function requireAuth(req, _res, next) {
     id: decoded.id,
     role: decoded.role,
     email: decoded.email,
+    employeeId: decoded.employeeId || null,
   };
 
   next();

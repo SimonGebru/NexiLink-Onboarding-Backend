@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
-    
     passwordHash: {
       type: String,
       required: true,
@@ -20,6 +19,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["admin", "hr", "employee"],
       default: "hr",
+    },
+
+    employeeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Employee",
+      default: null,
     },
 
     name: {

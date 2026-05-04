@@ -18,7 +18,7 @@ const taskItemSchema = new mongoose.Schema(
       trim: true,
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const taskSchema = new mongoose.Schema(
@@ -26,6 +26,12 @@ const taskSchema = new mongoose.Schema(
     title: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    description: {
+      type: String,
+      default: "",
       trim: true,
     },
 
@@ -56,7 +62,7 @@ const taskSchema = new mongoose.Schema(
       default: [],
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 const employeeOnboardingSchema = new mongoose.Schema(
@@ -97,7 +103,7 @@ const employeeOnboardingSchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 export default mongoose.model("EmployeeOnboarding", employeeOnboardingSchema);

@@ -97,6 +97,7 @@ export const createOnboarding = async (req, res, next) => {
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .map((t) => ({
         title: t.title,
+        description: t.description || "",
         status: t.defaultStatus || "Ej startad",
         comment: t.defaultComment || "",
         order: t.order ?? 0,

@@ -4,6 +4,25 @@ import User from "../models/User.model.js";
 import EmployeeOnboarding from "../models/EmployeeOnboarding.model.js";
 import ApiError from "../utils/ApiError.js";
 
+const emitMessageEvents = (req, conversation, message) => {
+  const io = req.app.get("io");
+
+  if (!io) return;
+
+  const conversationId = conversation._id.toString();
+
+  io.to(conversationId).emit("message:new", {
+    conversationId,
+    message,
+  });
+
+  io.to(conversationId).emit("conversation:updated", {
+    conversationId,
+    lastMessage: message,
+    lastMessageAt: conversation.lastMessageAt,
+  });
+};
+
 export const sendOnboardingMessage = async (req, res, next) => {
   try {
     const { onboardingId } = req.params;
@@ -71,6 +90,8 @@ export const sendOnboardingMessage = async (req, res, next) => {
     await conversation.save();
 
     const populatedMessage = await message.populate("sender", "name email role");
+
+    emitMessageEvents(req, conversation, populatedMessage);
 
     res.status(201).json({
       success: true,
@@ -211,6 +232,8 @@ export const sendConversationMessage = async (req, res, next) => {
     await conversation.save();
 
     const populatedMessage = await message.populate("sender", "name email role");
+
+    emitMessageEvents(req, conversation, populatedMessage);
 
     res.status(201).json({
       success: true,

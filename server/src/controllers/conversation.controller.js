@@ -16,11 +16,23 @@ const emitMessageEvents = (req, conversation, message) => {
     message,
   });
 
-  io.to(conversationId).emit("conversation:updated", {
-    conversationId,
-    lastMessage: message,
-    lastMessageAt: conversation.lastMessageAt,
-  });
+  
+  if (Array.isArray(conversation.participants)) {
+    conversation.participants.forEach((participant) => {
+      const participantId = participant._id
+        ? participant._id.toString()
+        : participant.toString();
+      io.to(participantId).emit("conversation:updated", {
+        ...(conversation.toObject ? conversation.toObject() : conversation),
+        lastMessage: message,
+        lastMessageAt: conversation.lastMessageAt,
+      });
+      io.to(participantId).emit("message:new", {
+        conversationId,
+        message,
+      });
+    });
+  }
 };
 
 export const sendOnboardingMessage = async (req, res, next) => {
@@ -41,7 +53,10 @@ export const sendOnboardingMessage = async (req, res, next) => {
 
     if (!onboarding.createdBy) {
       return next(
-        new ApiError(400, "This onboarding does not have a responsible HR user")
+        new ApiError(
+          400,
+          "This onboarding does not have a responsible HR user",
+        ),
       );
     }
 
@@ -51,7 +66,7 @@ export const sendOnboardingMessage = async (req, res, next) => {
 
     if (!employeeUser) {
       return next(
-        new ApiError(400, "No user account found for this onboarding employee")
+        new ApiError(400, "No user account found for this onboarding employee"),
       );
     }
 
@@ -64,7 +79,10 @@ export const sendOnboardingMessage = async (req, res, next) => {
 
     if (!isEmployee && !isResponsibleHr && !isAdminOrHr) {
       return next(
-        new ApiError(403, "You are not allowed to message about this onboarding")
+        new ApiError(
+          403,
+          "You are not allowed to message about this onboarding",
+        ),
       );
     }
 
@@ -89,7 +107,12 @@ export const sendOnboardingMessage = async (req, res, next) => {
     conversation.lastMessageAt = new Date();
     await conversation.save();
 
-    const populatedMessage = await message.populate("sender", "name email role");
+    await conversation.populate("participants", "name email role");
+
+    const populatedMessage = await message.populate(
+      "sender",
+      "name email role",
+    );
 
     emitMessageEvents(req, conversation, populatedMessage);
 
@@ -117,14 +140,14 @@ export const getConversationMessages = async (req, res, next) => {
     }
 
     const isParticipant = conversation.participants.some(
-      (participantId) => participantId.toString() === userId
+      (participantId) => participantId.toString() === userId,
     );
 
     const isAdminOrHr = req.user.role === "admin" || req.user.role === "hr";
 
     if (!isParticipant && !isAdminOrHr) {
       return next(
-        new ApiError(403, "You are not allowed to view this conversation")
+        new ApiError(403, "You are not allowed to view this conversation"),
       );
     }
 
@@ -174,7 +197,7 @@ export const getConversations = async (req, res, next) => {
           lastMessage,
           unreadCount,
         };
-      })
+      }),
     );
 
     res.json({
@@ -203,7 +226,7 @@ export const sendConversationMessage = async (req, res, next) => {
     }
 
     const isParticipant = conversation.participants.some(
-      (participantId) => participantId.toString() === userId
+      (participantId) => participantId.toString() === userId,
     );
 
     const isAdminOrHr = req.user.role === "admin" || req.user.role === "hr";
@@ -212,8 +235,8 @@ export const sendConversationMessage = async (req, res, next) => {
       return next(
         new ApiError(
           403,
-          "You are not allowed to send messages in this conversation"
-        )
+          "You are not allowed to send messages in this conversation",
+        ),
       );
     }
 
@@ -231,7 +254,12 @@ export const sendConversationMessage = async (req, res, next) => {
     conversation.lastMessageAt = new Date();
     await conversation.save();
 
-    const populatedMessage = await message.populate("sender", "name email role");
+    await conversation.populate("participants", "name email role");
+
+    const populatedMessage = await message.populate(
+      "sender",
+      "name email role",
+    );
 
     emitMessageEvents(req, conversation, populatedMessage);
 
@@ -259,14 +287,14 @@ export const markConversationAsRead = async (req, res, next) => {
     }
 
     const isParticipant = conversation.participants.some(
-      (participantId) => participantId.toString() === userId
+      (participantId) => participantId.toString() === userId,
     );
 
     const isAdminOrHr = req.user.role === "admin" || req.user.role === "hr";
 
     if (!isParticipant && !isAdminOrHr) {
       return next(
-        new ApiError(403, "You are not allowed to read this conversation")
+        new ApiError(403, "You are not allowed to read this conversation"),
       );
     }
 
@@ -277,7 +305,7 @@ export const markConversationAsRead = async (req, res, next) => {
       },
       {
         $addToSet: { readBy: userId },
-      }
+      },
     );
 
     res.json({

@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 
 import app from "./app.js";
 import connectDB from "./config/db.js";
+import { verifyToken } from "./utils/jwt.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -16,8 +17,29 @@ const io = new Server(httpServer, {
   },
 });
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(); 
+  try {
+    const decoded = verifyToken(token);
+    socket.userId = decoded.id;
+    next();
+  } catch (err) {
+    next(new Error("Authentication error"));
+  }
+});
+
 io.on("connection", (socket) => {
-  console.log("Socket connected:", socket.id);
+  console.log(
+    "Socket connected:",
+    socket.id,
+    "User ID:",
+    socket.userId || "anonymous",
+  );
+
+  if (socket.userId) {
+    socket.join(socket.userId);
+  }
 
   socket.on("conversation:join", (conversationId) => {
     socket.join(conversationId);

@@ -155,12 +155,24 @@ export const getOnboardingById = async (req, res, next) => {
       throw new ApiError(400, "Invalid onboarding id format");
     }
 
-    // populate här också (valfritt men nice)
     const onboarding = await EmployeeOnboarding.findById(id)
       .populate("employee")
       .populate("program");
 
-    if (!onboarding) throw new ApiError(404, "Onboarding not found");
+    if (!onboarding) {
+      throw new ApiError(404, "Onboarding not found");
+    }
+
+    const isAdminOrHr = req.user.role === "admin" || req.user.role === "hr";
+
+    const isEmployeeOwner =
+      req.user.role === "employee" &&
+      req.user.employeeId &&
+      onboarding.employee?._id?.toString() === req.user.employeeId.toString();
+
+    if (!isAdminOrHr && !isEmployeeOwner) {
+      throw new ApiError(403, "You are not allowed to view this onboarding");
+    }
 
     const progress = calcProgress(onboarding.tasks);
 
@@ -284,45 +296,23 @@ if (req.user?.id) {
 
 export const getMyOnboardings = async (req, res, next) => {
   try {
-    const userId = req.user?.id;
+    const employeeId = req.user?.employeeId;
 
-    if (!userId) {
-      throw new ApiError(401, "Unauthorized");
-    }
-
-    // Hitta employee kopplad till user
-    const employee = await Employee.findOne({ user: userId });
-
-    if (!employee) {
-      return res.json([]);
+    if (!employeeId) {
+      throw new ApiError(401, "No employeeId found on user");
     }
 
     const onboardings = await EmployeeOnboarding.find({
-      employee: employee._id,
+      employee: employeeId,
     })
       .sort({ createdAt: -1 })
+      .populate("employee")
       .populate("program");
 
-    const result = onboardings.map((o) => {
-      const progress = calcProgress(o.tasks);
-
-      return {
-        id: o._id,
-        programName: o.program?.name || "Program",
-        status:
-          progress.percent === 100
-            ? "Klar"
-            : progress.percent > 0
-            ? "Pågår"
-            : "Ej startad",
-        startDate: o.startDate,
-        progress: {
-          percent: progress.percent,
-          completed: progress.done,
-          total: progress.total,
-        },
-      };
-    });
+    const result = onboardings.map((onboarding) => ({
+      onboarding,
+      progress: calcProgress(onboarding.tasks),
+    }));
 
     res.json(result);
   } catch (err) {

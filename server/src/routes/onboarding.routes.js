@@ -7,13 +7,19 @@ import {
   getOnboardingById,
   updateOnboardingTask,
   getAllOnboardings,
+  getMyOnboardings,
 } from "../controllers/onboarding.controller.js";
 
 const router = express.Router();
 
 router.post("/", requireAuth, requireRole("admin", "hr"), createOnboarding);
 router.get("/", requireAuth, requireRole("admin", "hr"), getAllOnboardings);
-router.get("/:id", requireAuth, requireRole("admin", "hr"), getOnboardingById);
+
+
+router.get("/me", requireAuth, getMyOnboardings);
+
+router.get("/:id", requireAuth, getOnboardingById);
+
 router.patch(
   "/:id/tasks/:taskId",
   requireAuth,

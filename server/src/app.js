@@ -12,6 +12,7 @@ import programAnalysisRoutes from "./routes/programAnalysis.routes.js";
 import meRoutes from "./routes/me.routes.js";
 import inviteRoutes from "./routes/invite.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
+import todoRoutes from "./routes/todo.routes.js";
 
 import errorHandler from "./middlewares/errorHandler.js";
 
@@ -35,6 +36,7 @@ app.use("/api/programs", programAnalysisRoutes);
 app.use("/api/me", meRoutes);
 app.use("/api/invites/employee", inviteRoutes);
 app.use("/api/conversations", conversationRoutes);
+app.use("/api/todos", todoRoutes);
 
 app.use(errorHandler);
 

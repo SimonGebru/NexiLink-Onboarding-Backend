@@ -13,6 +13,7 @@ import meRoutes from "./routes/me.routes.js";
 import inviteRoutes from "./routes/invite.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
 import todoRoutes from "./routes/todo.routes.js";
+import quizRoutes from "./routes/quiz.routes.js";
 
 import errorHandler from "./middlewares/errorHandler.js";
 
@@ -33,6 +34,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/dev/ai", devAiRoutes);
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/programs", programAnalysisRoutes);
+app.use("/api", quizRoutes);
 app.use("/api/me", meRoutes);
 app.use("/api/invites/employee", inviteRoutes);
 app.use("/api/conversations", conversationRoutes);

@@ -92,9 +92,15 @@ const employeeOnboardingSchema = new mongoose.Schema(
       default: "active",
     },
 
-    tasks: {
+        tasks: {
       type: [taskSchema],
       default: [],
+    },
+
+    assignedQuiz: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Quiz",
+      default: null,
     },
 
     createdBy: {

@@ -4,6 +4,7 @@ import ApiError from "../utils/ApiError.js";
 import EmployeeOnboarding from "../models/EmployeeOnboarding.model.js";
 import Employee from "../models/Employee.model.js";
 import Program from "../models/Program.model.js";
+import Quiz from "../models/Quiz.model.js";
 import Notification from "../models/Notification.js";
 
 /**
@@ -38,19 +39,19 @@ export const getAllOnboardings = async (req, res, next) => {
     }
 
     const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 20, 1), 100);
-
     const filter = status === "all" ? {} : { overallStatus: status };
 
     const onboardings = await EmployeeOnboarding.find(filter)
       .sort({ createdAt: -1 })
       .limit(safeLimit)
       .populate("employee")
-      .populate("program");
+      .populate("program")
+      .populate("assignedQuiz");
 
-    const mapped = onboardings.map((o) => {
-      const progress = calcProgress(o.tasks);
-      return { onboarding: o, progress };
-    });
+    const mapped = onboardings.map((onboarding) => ({
+      onboarding,
+      progress: calcProgress(onboarding.tasks),
+    }));
 
     res.json(mapped);
   } catch (err) {
@@ -60,60 +61,100 @@ export const getAllOnboardings = async (req, res, next) => {
 
 /**
  * POST /onboardings
- * body: { employeeId, programId, startDate }
+ * body: { employeeId, programId, startDate, quizId? }
  */
 export const createOnboarding = async (req, res, next) => {
   try {
-    const { employeeId, programId, startDate } = req.body;
+    const { employeeId, programId, startDate, quizId, includeChecklist = true } =
+  req.body;
 
     if (!employeeId || !programId || !startDate) {
-      throw new ApiError(400, "employeeId, programId and startDate are required");
+      throw new ApiError(
+        400,
+        "employeeId, programId and startDate are required"
+      );
     }
 
     if (!mongoose.Types.ObjectId.isValid(employeeId)) {
       throw new ApiError(400, "Invalid employeeId format");
     }
+
     if (!mongoose.Types.ObjectId.isValid(programId)) {
       throw new ApiError(400, "Invalid programId format");
     }
 
-    // Viktigt: employee måste finnas + vara aktiv
+    if (quizId && !mongoose.Types.ObjectId.isValid(quizId)) {
+      throw new ApiError(400, "Invalid quizId format");
+    }
+
     const employee = await Employee.findById(employeeId);
-    if (!employee) throw new ApiError(404, "Employee not found");
+
+    if (!employee) {
+      throw new ApiError(404, "Employee not found");
+    }
+
     if (employee.active === false) {
       throw new ApiError(400, "Employee is inactive");
     }
 
     const program = await Program.findById(programId);
-    if (!program) throw new ApiError(404, "Program not found");
 
-    // Bygg tasks från programmets checklistTemplate
-    const template = Array.isArray(program.checklistTemplate)
-      ? program.checklistTemplate
-      : [];
+    if (!program) {
+      throw new ApiError(404, "Program not found");
+    }
 
-    const tasks = template
-      .slice()
-      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-      .map((t) => ({
-        title: t.title,
-        description: t.description || "",
-        status: t.defaultStatus || "Ej startad",
-        comment: t.defaultComment || "",
-        order: t.order ?? 0,
-        items: [],
-        questions: t.questions || []
-      }));
+    let assignedQuiz = null;
+
+    if (quizId) {
+      const quiz = await Quiz.findById(quizId);
+
+      if (!quiz) {
+        throw new ApiError(404, "Quiz not found");
+      }
+
+      if (quiz.status !== "done") {
+        throw new ApiError(400, "Quiz must be generated before assigning");
+      }
+
+      if (quiz.programId.toString() !== programId) {
+        throw new ApiError(
+          400,
+          "Quiz does not belong to the selected program"
+        );
+      }
+
+      assignedQuiz = quiz._id;
+    }
+
+    const shouldIncludeChecklist = Boolean(includeChecklist);
+
+const template =
+  shouldIncludeChecklist && Array.isArray(program.checklistTemplate)
+    ? program.checklistTemplate
+    : [];
+
+const tasks = template
+  .slice()
+  .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  .map((task) => ({
+    title: task.title,
+    description: task.description || "",
+    status: task.defaultStatus || "Ej startad",
+    comment: task.defaultComment || "",
+    order: task.order ?? 0,
+    items: [],
+    questions: task.questions || [],
+  }));
 
     const onboarding = await EmployeeOnboarding.create({
       employee: employee._id,
       program: program._id,
       startDate: new Date(startDate),
       tasks,
+      assignedQuiz,
       createdBy: req.user?.id || null,
     });
 
-    // NOTIS: onboarding startad (till den som är inloggad)
     if (req.user?.id) {
       await Notification.create({
         userId: req.user.id,
@@ -124,14 +165,15 @@ export const createOnboarding = async (req, res, next) => {
           onboardingId: onboarding._id,
           employeeId: employee._id,
           programId: program._id,
+          quizId: assignedQuiz,
         },
       });
     }
 
-    // populate så frontend slipper extra calls
     const populated = await EmployeeOnboarding.findById(onboarding._id)
       .populate("employee")
-      .populate("program");
+      .populate("program")
+      .populate("assignedQuiz");
 
     const progress = calcProgress(populated.tasks);
 
@@ -157,7 +199,8 @@ export const getOnboardingById = async (req, res, next) => {
 
     const onboarding = await EmployeeOnboarding.findById(id)
       .populate("employee")
-      .populate("program");
+      .populate("program")
+      .populate("assignedQuiz");
 
     if (!onboarding) {
       throw new ApiError(404, "Onboarding not found");
@@ -197,27 +240,35 @@ export const updateOnboardingTask = async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new ApiError(400, "Invalid onboarding id format");
     }
+
     if (!mongoose.Types.ObjectId.isValid(taskId)) {
       throw new ApiError(400, "Invalid taskId format");
     }
 
     const onboarding = await EmployeeOnboarding.findById(id);
-    if (!onboarding) throw new ApiError(404, "Onboarding not found");
+
+    if (!onboarding) {
+      throw new ApiError(404, "Onboarding not found");
+    }
 
     const task = onboarding.tasks.id(taskId);
-    if (!task) throw new ApiError(404, "Task not found");
 
-    // Spara föregående status så vi kan avgöra om den blev "Klar"
+    if (!task) {
+      throw new ApiError(404, "Task not found");
+    }
+
     const prevStatus = task.status;
 
     if (typeof status !== "undefined") {
       const allowed = ["Ej startad", "Pågår", "Klar"];
+
       if (!allowed.includes(status)) {
         throw new ApiError(
           400,
           `Invalid status. Allowed: ${allowed.join(", ")}`
         );
       }
+
       task.status = status;
     }
 
@@ -227,66 +278,71 @@ export const updateOnboardingTask = async (req, res, next) => {
 
     await onboarding.save();
 
-  await onboarding.save();
+    if (
+      req.user?.id &&
+      typeof status !== "undefined" &&
+      prevStatus !== "Klar" &&
+      status === "Klar"
+    ) {
+      const populated = await EmployeeOnboarding.findById(onboarding._id)
+        .populate("employee")
+        .populate("program")
+        .populate("assignedQuiz");
 
-// NOTIS: task blev Klar (till den som är inloggad)
-if (
-  req.user?.id &&
-  typeof status !== "undefined" &&
-  prevStatus !== "Klar" &&
-  status === "Klar"
-) {
-  const populated = await EmployeeOnboarding.findById(onboarding._id)
-    .populate("employee")
-    .populate("program");
+      await Notification.create({
+        userId: req.user.id,
+        type: "task_completed",
+        title: "Uppgift klar",
+        message: `${populated.employee?.fullName || "Nyanställd"} • ${
+          task.title
+        }`,
+        meta: {
+          onboardingId: onboarding._id,
+          employeeId: populated.employee?._id || null,
+          programId: populated.program?._id || null,
+          taskId,
+        },
+      });
+    }
 
-  await Notification.create({
-    userId: req.user.id,
-    type: "task_completed",
-    title: "Uppgift klar",
-    message: `${populated.employee?.fullName || "Nyanställd"} • ${task.title}`,
-    meta: {
-      onboardingId: onboarding._id,
-      employeeId: populated.employee?._id || null,
-      programId: populated.program?._id || null,
-      taskId,
-    },
-  });
-}
+    if (req.user?.id) {
+      const progressNow = calcProgress(onboarding.tasks);
+      const wasCompleted = onboarding.overallStatus === "completed";
 
-// NOTIS: onboarding blev klar (alla tasks Klar) + uppdatera overallStatus
-if (req.user?.id) {
-  const progressNow = calcProgress(onboarding.tasks);
-  const wasCompleted = onboarding.overallStatus === "completed";
+      if (!wasCompleted && progressNow.percent === 100) {
+        onboarding.overallStatus = "completed";
+        await onboarding.save();
 
-  if (!wasCompleted && progressNow.percent === 100) {
-    onboarding.overallStatus = "completed";
-    await onboarding.save();
+        const populated = await EmployeeOnboarding.findById(onboarding._id)
+          .populate("employee")
+          .populate("program")
+          .populate("assignedQuiz");
+
+        await Notification.create({
+          userId: req.user.id,
+          type: "onboarding_completed",
+          title: "Onboarding klar",
+          message: `${populated.employee?.fullName || "Nyanställd"} • ${
+            populated.program?.name || "Program"
+          }`,
+          meta: {
+            onboardingId: onboarding._id,
+            employeeId: populated.employee?._id || null,
+            programId: populated.program?._id || null,
+          },
+        });
+      }
+    }
 
     const populated = await EmployeeOnboarding.findById(onboarding._id)
       .populate("employee")
-      .populate("program");
+      .populate("program")
+      .populate("assignedQuiz");
 
-    await Notification.create({
-      userId: req.user.id,
-      type: "onboarding_completed",
-      title: "Onboarding klar",
-      message: `${populated.employee?.fullName || "Nyanställd"} • ${
-        populated.program?.name || "Program"
-      }`,
-      meta: {
-        onboardingId: onboarding._id,
-        employeeId: populated.employee?._id || null,
-        programId: populated.program?._id || null,
-      },
-    });
-  }
-}
-
-    const progress = calcProgress(onboarding.tasks);
+    const progress = calcProgress(populated.tasks);
 
     res.json({
-      onboarding,
+      onboarding: populated,
       progress,
     });
   } catch (err) {
@@ -307,7 +363,8 @@ export const getMyOnboardings = async (req, res, next) => {
     })
       .sort({ createdAt: -1 })
       .populate("employee")
-      .populate("program");
+      .populate("program")
+      .populate("assignedQuiz");
 
     const result = onboardings.map((onboarding) => ({
       onboarding,

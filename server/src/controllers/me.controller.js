@@ -3,6 +3,9 @@ import ApiError from "../utils/ApiError.js";
 import EmployeeOnboarding from "../models/EmployeeOnboarding.model.js";
 import User from "../models/User.model.js";
 
+import Quiz from "../models/Quiz.model.js";
+import QuizAttempt from "../models/QuizAttempt.model.js";
+
 function calcProgress(tasks = []) {
   const total = tasks.length || 0;
   if (total === 0) return { total: 0, done: 0, percent: 0 };
@@ -14,7 +17,6 @@ function calcProgress(tasks = []) {
 }
 
 async function getEmployeeContext(req) {
-  
   if (req.user?.role && req.user.role !== "employee") {
     throw new ApiError(403, "Only employees can access this endpoint");
   }
@@ -73,6 +75,7 @@ function mapOnboardingListItem(onboarding) {
     status: onboarding.overallStatus,
     startDate: onboarding.startDate,
     progress,
+    assignedQuiz: onboarding.assignedQuiz ?? null,
   };
 }
 
@@ -83,9 +86,45 @@ export const getMyOnboardings = async (req, res, next) => {
     const onboardings = await EmployeeOnboarding.find({ employee: employeeId })
       .sort({ startDate: -1, createdAt: -1 })
       .populate("program", "name")
+      .populate("assignedQuiz")
       .lean();
 
-    res.json({ onboardings: onboardings.map(mapOnboardingListItem) });
+    // Hämta quiz status för varje onboarding
+    const mappedResults = await Promise.all(
+      onboardings.map(async (onboarding) => {
+        const mappedOnboarding = mapOnboardingListItem(onboarding);
+
+        let quiz = onboarding.assignedQuiz;
+
+        if (!quiz && onboarding.program) {
+          quiz = await Quiz.findOne({
+            programId: onboarding.program._id,
+            status: "done",
+          })
+            .sort({ updatedAt: -1 })
+            .lean();
+        }
+
+        if (!quiz) {
+          mappedOnboarding.assignedQuiz = null;
+          return mappedOnboarding;
+        }
+
+        const passedAttempt = await QuizAttempt.findOne({
+          onboarding: onboarding._id,
+          passed: true,
+        });
+
+        mappedOnboarding.assignedQuiz = {
+          quizId: quiz._id,
+          status: passedAttempt ? "passed" : "available",
+        };
+
+        return mappedOnboarding;
+      }),
+    );
+
+    res.json({ onboardings: mappedResults });
   } catch (err) {
     next(err);
   }
@@ -103,6 +142,7 @@ export const getMyOnboardingById = async (req, res, next) => {
 
     const onboarding = await EmployeeOnboarding.findById(onboardingId)
       .populate("program", "name")
+      .populate("assignedQuiz")
       .lean();
 
     if (!onboarding) throw new ApiError(404, "Onboarding not found");
@@ -111,7 +151,34 @@ export const getMyOnboardingById = async (req, res, next) => {
       throw new ApiError(403, "Forbidden");
     }
 
-    res.json(mapOnboardingDetails(onboarding));
+    // Hämta senaste godkända quiz
+    const baseMapped = mapOnboardingDetails(onboarding);
+    let activeQuiz = onboarding.assignedQuiz;
+
+    if (!activeQuiz && onboarding.program) {
+      activeQuiz = await Quiz.findOne({
+        programId: onboarding.program._id,
+        status: "done",
+      })
+        .sort({ updatedAt: -1 })
+        .lean();
+    }
+
+    if (activeQuiz) {
+      const passedAttempt = await QuizAttempt.findOne({
+        onboarding: onboarding._id,
+        passed: true,
+      });
+
+      baseMapped.assignedQuiz = {
+        quizId: activeQuiz._id,
+        status: passedAttempt ? "passed" : "available",
+      };
+    } else {
+      baseMapped.assignedQuiz = null;
+    }
+
+    res.json(baseMapped);
   } catch (err) {
     next(err);
   }
@@ -165,6 +232,47 @@ export const updateMyOnboardingTask = async (req, res, next) => {
       .lean();
 
     res.json(mapOnboardingDetails(fresh));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Hämtar aktiva quizzet som är kopplat till onboardingen
+export const getMyOnboardingQuiz = async (req, res, next) => {
+  try {
+    const onboardingId = req.params.id;
+
+    if (!mongoose.Types.ObjectId.isValid(onboardingId)) {
+      throw new ApiError(400, "Invalid onboarding id format");
+    }
+
+    const { employeeId } = await getEmployeeContext(req);
+
+    const onboarding = await EmployeeOnboarding.findById(onboardingId).lean();
+    if (!onboarding) throw new ApiError(404, "Onboarding not found");
+
+    if (String(onboarding.employee) !== String(employeeId)) {
+      throw new ApiError(403, "Forbidden");
+    }
+
+    let activeQuiz = onboarding.assignedQuiz;
+
+    if (!activeQuiz && onboarding.program) {
+      activeQuiz = await Quiz.findOne({
+        programId: onboarding.program,
+        status: "done",
+      })
+        .sort({ updatedAt: -1 })
+        .lean();
+    } else if (activeQuiz) {
+      activeQuiz = await Quiz.findById(activeQuiz).lean();
+    }
+
+    if (!activeQuiz) {
+      throw new ApiError(404, "No quiz assigned to this onboarding");
+    }
+
+    res.json(activeQuiz.quiz);
   } catch (err) {
     next(err);
   }

@@ -55,15 +55,10 @@ export async function submitQuizAttempt(req, res, next) {
     }
 
     const onboarding = await EmployeeOnboarding.findById(onboardingId)
-      .populate("employee")
-      .populate("assignedQuiz");
+      .populate("employee");
 
     if (!onboarding) {
       throw new ApiError(404, "Onboarding not found");
-    }
-
-    if (!onboarding.assignedQuiz) {
-      throw new ApiError(400, "This onboarding does not have an assigned quiz");
     }
 
     const isAdminOrHr = req.user.role === "admin" || req.user.role === "hr";
@@ -77,7 +72,16 @@ export async function submitQuizAttempt(req, res, next) {
       throw new ApiError(403, "You are not allowed to submit this quiz");
     }
 
-    const quiz = await Quiz.findById(onboarding.assignedQuiz._id);
+    // Hittar rätt quiz baserat på onboardingens assignedQuiz eller program
+    let quiz;
+    if (onboarding.assignedQuiz) {
+      quiz = await Quiz.findById(onboarding.assignedQuiz);
+    } else if (onboarding.program) {
+      quiz = await Quiz.findOne({
+        programId: onboarding.program,
+        status: "done"
+      }).sort({ updatedAt: -1 });
+    }
 
     if (!quiz) {
       throw new ApiError(404, "Quiz not found");

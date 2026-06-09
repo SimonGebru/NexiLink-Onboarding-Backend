@@ -34,7 +34,7 @@ export const getAllOnboardings = async (req, res, next) => {
     if (!allowedStatuses.includes(status)) {
       throw new ApiError(
         400,
-        `Invalid status. Allowed: ${allowedStatuses.join(", ")}`
+        `Invalid status. Allowed: ${allowedStatuses.join(", ")}`,
       );
     }
 
@@ -65,13 +65,18 @@ export const getAllOnboardings = async (req, res, next) => {
  */
 export const createOnboarding = async (req, res, next) => {
   try {
-    const { employeeId, programId, startDate, quizId, includeChecklist = true } =
-  req.body;
+    const {
+      employeeId,
+      programId,
+      startDate,
+      quizId,
+      includeChecklist = true,
+    } = req.body;
 
     if (!employeeId || !programId || !startDate) {
       throw new ApiError(
         400,
-        "employeeId, programId and startDate are required"
+        "employeeId, programId and startDate are required",
       );
     }
 
@@ -117,10 +122,7 @@ export const createOnboarding = async (req, res, next) => {
       }
 
       if (quiz.programId.toString() !== programId) {
-        throw new ApiError(
-          400,
-          "Quiz does not belong to the selected program"
-        );
+        throw new ApiError(400, "Quiz does not belong to the selected program");
       }
 
       assignedQuiz = quiz._id;
@@ -128,23 +130,23 @@ export const createOnboarding = async (req, res, next) => {
 
     const shouldIncludeChecklist = Boolean(includeChecklist);
 
-const template =
-  shouldIncludeChecklist && Array.isArray(program.checklistTemplate)
-    ? program.checklistTemplate
-    : [];
+    const template =
+      shouldIncludeChecklist && Array.isArray(program.checklistTemplate)
+        ? program.checklistTemplate
+        : [];
 
-const tasks = template
-  .slice()
-  .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
-  .map((task) => ({
-    title: task.title,
-    description: task.description || "",
-    status: task.defaultStatus || "Ej startad",
-    comment: task.defaultComment || "",
-    order: task.order ?? 0,
-    items: [],
-    questions: task.questions || [],
-  }));
+    const tasks = template
+      .slice()
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map((task) => ({
+        title: task.title,
+        description: task.description || "",
+        status: task.defaultStatus || "Ej startad",
+        comment: task.defaultComment || "",
+        order: task.order ?? 0,
+        items: [],
+        questions: task.questions || [],
+      }));
 
     const onboarding = await EmployeeOnboarding.create({
       employee: employee._id,
@@ -265,7 +267,7 @@ export const updateOnboardingTask = async (req, res, next) => {
       if (!allowed.includes(status)) {
         throw new ApiError(
           400,
-          `Invalid status. Allowed: ${allowed.join(", ")}`
+          `Invalid status. Allowed: ${allowed.join(", ")}`,
         );
       }
 
@@ -366,10 +368,36 @@ export const getMyOnboardings = async (req, res, next) => {
       .populate("program")
       .populate("assignedQuiz");
 
-    const result = onboardings.map((onboarding) => ({
-      onboarding,
-      progress: calcProgress(onboarding.tasks),
-    }));
+    const result = await Promise.all(
+      onboardings.map(async (doc) => {
+        const onboarding = doc.toObject();
+        let quiz = onboarding.assignedQuiz;
+
+        if (!quiz && onboarding.program) {
+          quiz = await Quiz.findOne({
+            programId: onboarding.program._id,
+            status: "done",
+          })
+            .sort({ updatedAt: -1 })
+            .lean();
+        }
+
+        if (quiz) {
+          const passedAttempt = await QuizAttempt.findOne({
+            onboarding: onboarding._id,
+            passed: true,
+          });
+          onboarding.assignedQuiz = {
+            quizId: quiz._id,
+            status: passedAttempt ? "passed" : "available",
+          };
+        } else {
+          onboarding.assignedQuiz = null;
+        }
+
+        return { onboarding, progress: calcProgress(onboarding.tasks) };
+      }),
+    );
 
     res.json(result);
   } catch (err) {
